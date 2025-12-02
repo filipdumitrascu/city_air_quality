@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingest-service
+  template:
+    metadata:
+      labels:
+        app: ingest-service
+    spec:
+      containers:
+        - name: ingest-service
+          image: gcr.io/cityairq-pollution-project/cityairq-ingest_service:latest
+          ports:
+            - containerPort: 8002
+          env:
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: /app/credentials.json
+          volumeMounts:
+          - name: credentials-volume
+            mountPath: /app/credentials.json
+            subPath: credentials.json
+      volumes:
+      - name: credentials-volume
+        secret:
+          secretName: credentials-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingest-service
+spec:
+  selector:
+    app: ingest-service
+  ports:
+    - protocol: TCP
+      port: 8002
+      targetPort: 8002
+  type: ClusterIP

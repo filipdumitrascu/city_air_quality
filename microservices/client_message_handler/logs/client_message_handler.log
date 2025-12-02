@@ -1,0 +1,59 @@
+2025-03-31 14:59:15,500 - DEBUG - Checking None for explicit credentials as part of auth process...
+2025-03-31 14:59:15,500 - DEBUG - Checking Cloud SDK credentials as part of auth process...
+2025-03-31 14:59:16,058 - INFO - Subscriber started and listening for messages on 'results_response_messages-sub'.
+2025-03-31 14:59:16,058 - DEBUG - Creating a stream, default ACK deadline set to 60 seconds.
+2025-03-31 14:59:16,058 - DEBUG - Started helper thread Thread-CallbackRequestDispatcher
+2025-03-31 14:59:16,058 - DEBUG - Started helper thread Thread-ConsumeBidirectionalStream
+2025-03-31 14:59:16,059 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:16,059 - DEBUG - Started helper thread Thread-LeaseMaintainer
+2025-03-31 14:59:16,059 - DEBUG - Snoozing lease management for 0.982337 seconds.
+2025-03-31 14:59:16,059 - DEBUG - waiting for recv.
+2025-03-31 14:59:16,059 - DEBUG - Sent heartbeat.
+2025-03-31 14:59:16,059 - DEBUG - Started helper thread Thread-Heartbeater
+2025-03-31 14:59:16,059 - INFO - Listening for messages on projects/cityairq-pollution-project/subscriptions/results_response_messages-sub...
+2025-03-31 14:59:17,047 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:17,047 - DEBUG - Snoozing lease management for 7.012217 seconds.
+2025-03-31 14:59:24,069 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:24,070 - DEBUG - Snoozing lease management for 6.754738 seconds.
+2025-03-31 14:59:30,830 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:30,837 - DEBUG - Snoozing lease management for 1.082529 seconds.
+2025-03-31 14:59:31,924 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:31,925 - DEBUG - Snoozing lease management for 3.214019 seconds.
+2025-03-31 14:59:35,143 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:35,144 - DEBUG - Snoozing lease management for 5.661562 seconds.
+2025-03-31 14:59:37,784 - DEBUG - Starting new HTTPS connection (1): www.googleapis.com:443
+2025-03-31 14:59:40,807 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:40,807 - DEBUG - Snoozing lease management for 6.348950 seconds.
+2025-03-31 14:59:43,677 - DEBUG - Making request: POST https://oauth2.googleapis.com/token
+2025-03-31 14:59:43,679 - DEBUG - Starting new HTTPS connection (1): oauth2.googleapis.com:443
+2025-03-31 14:59:46,063 - DEBUG - Sent heartbeat.
+2025-03-31 14:59:47,157 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:47,157 - DEBUG - Snoozing lease management for 5.069378 seconds.
+2025-03-31 14:59:47,691 - DEBUG - https://www.googleapis.com:443 "GET /oauth2/v3/tokeninfo?access_token=ya29.a0AeXRPp77wpepD0Gy61oOLf8Isms945uw_O74vQrkpMLNuG7mKJ8RD7LK4LD4YomBfKp1jYcSoOpKTowD8HCxwetnNWeN2nqHxIjDidKQ9anMrNvfwGa91JQiOK-KJhHDcHjRW_a0wv9tCq9GC6joF_FoSIJLaiDThpua9yCsDgaCgYKAXESARASFQHGX2Mi4SOMwuXrPuQ07JfVfK28-w0177 HTTP/1.1" 200 None
+2025-03-31 14:59:47,693 - DEBUG - Checking None for explicit credentials as part of auth process...
+2025-03-31 14:59:47,693 - DEBUG - Checking Cloud SDK credentials as part of auth process...
+2025-03-31 14:59:48,076 - DEBUG - Commit thread is waking up
+2025-03-31 14:59:49,303 - DEBUG - https://oauth2.googleapis.com:443 "POST /token HTTP/1.1" 200 None
+2025-03-31 14:59:49,471 - DEBUG - Making request: POST https://oauth2.googleapis.com/token
+2025-03-31 14:59:49,472 - DEBUG - Starting new HTTPS connection (1): oauth2.googleapis.com:443
+2025-03-31 14:59:49,893 - DEBUG - https://oauth2.googleapis.com:443 "POST /token HTTP/1.1" 200 None
+2025-03-31 14:59:50,022 - DEBUG - gRPC Publish took 1.945739984512329 seconds.
+2025-03-31 14:59:50,023 - INFO - The request was published in the queue.
+2025-03-31 14:59:50,023 - INFO - Waiting for response...
+2025-03-31 14:59:52,232 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:52,232 - DEBUG - Snoozing lease management for 4.904331 seconds.
+2025-03-31 14:59:53,719 - DEBUG - recved response.
+2025-03-31 14:59:53,719 - DEBUG - Processing 1 received message(s), currently on hold 0 (bytes 0).
+2025-03-31 14:59:53,842 - DEBUG - Released held message, scheduling callback for it, still on hold 0 (bytes 0).
+2025-03-31 14:59:53,842 - DEBUG - waiting for recv.
+2025-03-31 14:59:53,843 - INFO - Received valid response: [['clientId-ec85695bd6a1fdaa', '1970-01-21T01:24:59.160000', 23.384256, 25.0866048, 35.827482, 67.626262, 1006.28282, 59.222, 805.0, 16.181188, 19.28282, 20.1111]]
+2025-03-31 14:59:53,843 - DEBUG - Handling 1 batched requests
+2025-03-31 14:59:53,950 - DEBUG - Handling 1 batched requests
+2025-03-31 14:59:54,031 - INFO - Received response: [['clientId-ec85695bd6a1fdaa', '1970-01-21T01:24:59.160000', 23.384256, 25.0866048, 35.827482, 67.626262, 1006.28282, 59.222, 805.0, 16.181188, 19.28282, 20.1111]]
+2025-03-31 14:59:54,171 - DEBUG - Item MD5FU0RQBhYsXUZIUTcZCGhRDk9eIz81IChFFgkgbgE2QloSCAdcXHUHUQwQdygydGhTEVRTT1N0X3MrFePrxvoxcywYdn1ifWtbEwkFQVd2XVkbBUCJmKi7y9TpWmddTeHtiY40Zf3RsrUpZiQ9WxJLLD5-PTFFQV5AEkw2BERJUytDCypYEU4EISE- was not managed.
+2025-03-31 14:59:57,140 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:57,141 - DEBUG - Snoozing lease management for 4.985661 seconds.
+2025-03-31 15:00:02,131 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 15:00:02,132 - DEBUG - Snoozing lease management for 7.926936 seconds.
+2025-03-31 15:00:10,062 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 15:00:10,062 - DEBUG - Snoozing lease management for 7.504678 seconds.

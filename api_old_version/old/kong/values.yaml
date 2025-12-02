@@ -1,0 +1,53 @@
+image:
+  repository: kong/kong-gateway
+  tag: "3.10"
+
+secretVolumes:
+  - kong-cluster-cert
+
+admin:
+  enabled: true
+  type: ClusterIP
+  http:
+    enabled: true
+    servicePort: 8001
+    containerPort: 8001
+
+env:
+  role: data_plane
+  database: "off"
+  cluster_mtls: pki
+  cluster_control_plane: bc0ddeecb4.eu.cp0.konghq.com:443
+  cluster_server_name: bc0ddeecb4.eu.cp0.konghq.com
+  cluster_telemetry_endpoint: bc0ddeecb4.eu.tp0.konghq.com:443
+  cluster_telemetry_server_name: bc0ddeecb4.eu.tp0.konghq.com
+  cluster_cert: /etc/secrets/kong-cluster-cert/tls.crt
+  cluster_cert_key: /etc/secrets/kong-cluster-cert/tls.key
+  lua_ssl_trusted_certificate: system
+  konnect_mode: "on"
+  vitals: "off"
+  nginx_worker_processes: "1"
+  upstream_keepalive_max_requests: "100000"
+  nginx_http_keepalive_requests: "100000"
+  proxy_access_log: "off"
+  dns_stale_ttl: "3600"
+  router_flavor: expressions
+
+ingressController:
+  enabled: false
+  installCRDs: false
+
+proxy:
+  enabled: true
+  type: LoadBalancer
+  http:
+    enabled: true
+    servicePort: 80
+  tls:
+    enabled: true
+    servicePort: 443
+
+resources:
+  requests:
+    cpu: 200m
+    memory: "256Mi"

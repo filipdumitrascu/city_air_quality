@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-provider-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-provider-service
+  template:
+    metadata:
+      labels:
+        app: data-provider-service
+    spec:
+      containers:
+        - name: data-provider-service
+          image: gcr.io/cityairq-pollution-project/cityairq-data_provider_service:latest
+          ports:
+            - containerPort: 8001
+          env:
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: /app/credentials.json
+          volumeMounts:
+          - name: credentials-volume
+            mountPath: /app/credentials.json
+            subPath: credentials.json
+      volumes:
+      - name: credentials-volume
+        secret:
+          secretName: credentials-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-provider-service
+spec:
+  selector:
+    app: data-provider-service
+  ports:
+    - protocol: TCP
+      port: 8001
+      targetPort: 8001
+  type: ClusterIP

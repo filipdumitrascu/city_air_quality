@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client-message-handler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: client-message-handler
+  template:
+    metadata:
+      labels:
+        app: client-message-handler
+    spec:
+      containers:
+        - name: client-message-handler
+          image: gcr.io/cityairq-pollution-project/cityairq-client_message_handler:latest
+          ports:
+          - containerPort: 8000
+          env:
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: /app/credentials.json
+          volumeMounts:
+          - name: credentials-volume
+            mountPath: /app/credentials.json
+            subPath: credentials.json
+      volumes:
+      - name: credentials-volume
+        secret:
+          secretName: credentials-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: client-message-handler
+  labels:
+    app: client-message-handler
+spec:
+  selector:
+    app: client-message-handler
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: 8000
+    - name: http
+      protocol: TCP
+      port: 3000
+      targetPort: 8000
+  type: LoadBalancer

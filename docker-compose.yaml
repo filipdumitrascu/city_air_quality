@@ -1,0 +1,37 @@
+services:
+  client_message_handler:
+    build:
+      context: .
+      dockerfile: microservices/client_message_handler/Dockerfile
+    volumes:
+      - ./credentials.json:/app/credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+    ports:
+      - "8000:8000"
+  data_provider_service:
+    build:
+      context: .
+      dockerfile: microservices/data_provider_service/Dockerfile
+    volumes:
+      - ./credentials.json:/app/credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+    ports:
+      - "8001:8001"
+  ingest_service:
+    build:
+      context: .
+      dockerfile: microservices/ingest_service/Dockerfile
+    volumes:
+      - ./credentials.json:/app/credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+    ports:
+      - "8002:8002"
+  database_service:
+    build:
+      context: .
+      dockerfile: microservices/database_service/Dockerfile
+    ports:
+      - "8003:8003"

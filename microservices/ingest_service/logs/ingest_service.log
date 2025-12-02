@@ -1,0 +1,39 @@
+2025-03-31 14:59:28,160 - DEBUG - Checking None for explicit credentials as part of auth process...
+2025-03-31 14:59:28,161 - DEBUG - Checking Cloud SDK credentials as part of auth process...
+2025-03-31 14:59:28,546 - INFO - Subscriber started and listening for messages on 'ingest_service_messages-sub'.
+2025-03-31 14:59:28,546 - DEBUG - Creating a stream, default ACK deadline set to 60 seconds.
+2025-03-31 14:59:28,546 - DEBUG - Started helper thread Thread-CallbackRequestDispatcher
+2025-03-31 14:59:28,547 - DEBUG - Started helper thread Thread-ConsumeBidirectionalStream
+2025-03-31 14:59:28,547 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:28,547 - DEBUG - Started helper thread Thread-LeaseMaintainer
+2025-03-31 14:59:28,547 - DEBUG - Snoozing lease management for 4.042669 seconds.
+2025-03-31 14:59:28,547 - DEBUG - waiting for recv.
+2025-03-31 14:59:28,547 - DEBUG - Sent heartbeat.
+2025-03-31 14:59:28,547 - DEBUG - Started helper thread Thread-Heartbeater
+2025-03-31 14:59:28,548 - INFO - Listening for messages on projects/cityairq-pollution-project/subscriptions/ingest_service_messages-sub...
+2025-03-31 14:59:32,590 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:32,591 - DEBUG - Snoozing lease management for 0.934233 seconds.
+2025-03-31 14:59:33,526 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:33,527 - DEBUG - Snoozing lease management for 0.019723 seconds.
+2025-03-31 14:59:33,550 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:33,550 - DEBUG - Snoozing lease management for 2.197536 seconds.
+2025-03-31 14:59:35,753 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:35,753 - DEBUG - Snoozing lease management for 7.429442 seconds.
+2025-03-31 14:59:42,476 - DEBUG - Making request: POST https://oauth2.googleapis.com/token
+2025-03-31 14:59:42,484 - DEBUG - Starting new HTTPS connection (1): oauth2.googleapis.com:443
+2025-03-31 14:59:43,184 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:43,184 - DEBUG - Snoozing lease management for 6.195546 seconds.
+2025-03-31 14:59:48,548 - DEBUG - https://oauth2.googleapis.com:443 "POST /token HTTP/1.1" 200 None
+2025-03-31 14:59:49,387 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:49,389 - DEBUG - Snoozing lease management for 3.254382 seconds.
+2025-03-31 14:59:52,645 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:52,645 - DEBUG - Snoozing lease management for 3.708145 seconds.
+2025-03-31 14:59:56,356 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:56,357 - DEBUG - Snoozing lease management for 2.213201 seconds.
+2025-03-31 14:59:58,550 - DEBUG - Sent heartbeat.
+2025-03-31 14:59:58,575 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 14:59:58,575 - DEBUG - Snoozing lease management for 8.013647 seconds.
+2025-03-31 15:00:06,594 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 15:00:06,595 - DEBUG - Snoozing lease management for 7.827678 seconds.
+2025-03-31 15:00:14,423 - DEBUG - The current deadline value is 10 seconds.
+2025-03-31 15:00:14,423 - DEBUG - Snoozing lease management for 5.784812 seconds.
