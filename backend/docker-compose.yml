@@ -9,6 +9,7 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
     ports:
       - "8000:8000"
+
   data_provider_service:
     build:
       context: .
@@ -19,6 +20,7 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
     ports:
       - "8001:8001"
+
   ingest_service:
     build:
       context: .
@@ -29,9 +31,59 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
     ports:
       - "8002:8002"
+
   database_service:
     build:
       context: .
       dockerfile: microservices/database_service/Dockerfile
     ports:
       - "8003:8003"
+
+  redis:
+    image: redis:7-alpine
+    container_name: cityairq-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  routing-service:
+    build: 
+      context: ./microservices/routing_service
+      dockerfile: Dockerfile
+    container_name: cityairq-routing
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATABASE_SERVICE_URL=http://database-service:8000
+      - LOG_LEVEL=INFO
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./microservices/routing_service/logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      database-service:
+        condition: service_started
+    networks:
+      - backend-network
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  backend-network:
+    driver: bridge

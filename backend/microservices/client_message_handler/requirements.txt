@@ -8,3 +8,4 @@ requests==2.32.3
 requests-oauthlib==2.0.0
 uvicorn==0.34.0
 prometheus_fastapi_instrumentator
+redis==5.0.1

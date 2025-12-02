@@ -14,6 +14,16 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from common.message_queue_googlepubsub.pubsub_client import PubSubClientPublisher, PubSubClientSubscriber
 from common.authentification_service.auth import authorize
 
+import redis
+import os
+
+# După inițializarea FastAPI
+redis_client = redis.Redis(
+    host=os.getenv('REDIS_HOST', 'redis'),
+    port=int(os.getenv('REDIS_PORT', 6379)),
+    decode_responses=True
+)
+
 log_dir = os.path.join(os.path.dirname(__file__), "logs")
 os.makedirs(log_dir, exist_ok=True)
 
