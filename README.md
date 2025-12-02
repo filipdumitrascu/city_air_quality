@@ -1,5 +1,11 @@
 # CityAirQ
 
+# Contributors
+
+* [Filip Dumitrascu](https://github.com/filipdumitrascu)
+
+* [Bianca Dumitru](https://github.com/dbianca0907)
+
 Steps for running the API server.
 
 ## Uploading all the microservices to Docker
