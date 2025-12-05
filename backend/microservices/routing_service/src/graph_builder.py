@@ -57,8 +57,8 @@ class PollutionGraph:
         data_count = 0
         for data_point in pollution_data:
             cell = utils.get_grid_cell(
-                data_point['latitude'], 
-                data_point['longitude'],
+                data_point['lat'], 
+                data_point['lon'],
                 self.resolution
             )
             if cell in self.nodes:
