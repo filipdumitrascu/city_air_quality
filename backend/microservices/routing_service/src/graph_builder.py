@@ -9,36 +9,30 @@ class PollutionGraph:
     Edges: 8-connectivity with cost based on pollution and distance
     """
     
-    def __init__(self, resolution: float = 0.001):
+    def __init__(self, resolution: float = 0.001, alpha: float = 0.7):
         self.resolution = resolution
+        self.alpha = alpha  # Pollution weight (0.7 = 70% pollution, 30% distance)
         self.nodes = {}
         self.edges = {}
         
         # Bucharest bounding box
-        self.bbox = {
-            'lat_min': 44.35,
-            'lat_max': 44.50,
-            'lon_min': 25.95,
-            'lon_max': 26.20
-        }
+        self.lat_min = 44.35
+        self.lat_max = 44.50
+        self.lon_min = 25.95
+        self.lon_max = 26.20
 
-    def build_from_pollution_data(self, pollution_data: List[Dict]) -> None:
+    def build_graph(self, pollution_data: List[Dict]) -> None:
         """
         Build graph from pollution data points.
+        Updated method name for consistency.
         """
         print(f"Building graph with resolution {self.resolution}...")
+        print(f"Alpha (pollution weight): {self.alpha}")
+        print(f"Beta (distance weight): {1-self.alpha}")
         
         # Create grid
-        lat_range = np.arange(
-            self.bbox['lat_min'], 
-            self.bbox['lat_max'], 
-            self.resolution
-        )
-        lon_range = np.arange(
-            self.bbox['lon_min'], 
-            self.bbox['lon_max'], 
-            self.resolution
-        )
+        lat_range = np.arange(self.lat_min, self.lat_max, self.resolution)
+        lon_range = np.arange(self.lon_min, self.lon_max, self.resolution)
         
         print(f"Grid dimensions: {len(lat_range)} x {len(lon_range)}")
         
@@ -64,7 +58,7 @@ class PollutionGraph:
             if cell in self.nodes:
                 self.nodes[cell]['pollution'] = {
                     'pm10': data_point.get('pm10', 0),
-                    'pm25': data_point.get('pm2_5', 0),
+                    'pm25': data_point.get('pm25', data_point.get('pm2_5', 0)),
                     'no2': data_point.get('no2', 0)
                 }
                 self.nodes[cell]['has_data'] = True
@@ -153,30 +147,34 @@ class PollutionGraph:
                     neighbors.append(neighbor)
             self.edges[cell] = neighbors
     
-    def get_edge_cost(self, from_cell: Tuple, to_cell: Tuple, 
-                     alpha: float = 0.7) -> float:
+    def get_edge_cost(self, from_cell: Tuple, to_cell: Tuple) -> float:
         """
-        Calculate edge cost.
+        Calculate edge cost using stored alpha.
         Cost = alpha * pollution + (1-alpha) * distance
         
-        Args:
-            alpha: Weight for pollution (default 0.7 means 70% pollution, 30% distance)
+        Alpha (stored in self.alpha):
+            - 0.7 (default) = 70% pollution weight, 30% distance weight
+            - Higher alpha = prefer cleaner routes even if longer
+            - Lower alpha = prefer shorter routes even if more polluted
         """
         from_node = self.nodes[from_cell]
         to_node = self.nodes[to_cell]
         
-        # Distance component
+        # Distance component (in km)
         dist = utils.haversine_distance(
             from_node['lat'], from_node['lon'],
             to_node['lat'], to_node['lon']
         )
         
-        # Pollution component (average of from and to)
+        # Pollution component (normalized score 0-1)
         from_pollution = utils.calculate_pollution_score(**from_node['pollution'])
         to_pollution = utils.calculate_pollution_score(**to_node['pollution'])
         avg_pollution = (from_pollution + to_pollution) / 2
         
-        return alpha * avg_pollution + (1 - alpha) * dist
+        # Combined cost
+        cost = self.alpha * avg_pollution + (1 - self.alpha) * dist
+        
+        return cost
     
     def get_neighbors(self, cell: Tuple) -> List[Tuple]:
         """Get neighbors of a cell."""

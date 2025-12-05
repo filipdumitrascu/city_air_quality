@@ -20,9 +20,12 @@ class PathfindingAlgorithm(ABC):
         pass
     
     def _reconstruct_path(self, came_from: Dict, current: Tuple) -> List[Tuple]:
-        """Reconstruct path from came_from dictionary."""
+        """
+        Reconstruct path from came_from dictionary.
+        Fixed: Handle case where start has came_from[start] = None
+        """
         path = [current]
-        while current in came_from:
+        while current in came_from and came_from[current] is not None:
             current = came_from[current]
             path.append(current)
         path.reverse()
@@ -36,6 +39,7 @@ class PathfindingAlgorithm(ABC):
 class AStarAlgorithm(PathfindingAlgorithm):
     """
     A* algorithm with configurable heuristic.
+    Finds optimal path using heuristic to guide search.
     """
     
     def __init__(self, graph, heuristic_fn: Callable = None):
@@ -50,6 +54,9 @@ class AStarAlgorithm(PathfindingAlgorithm):
     def find_path(self, start: Tuple, goal: Tuple) -> Dict:
         """
         Standard A* pathfinding.
+        Uses f(n) = g(n) + h(n) where:
+        - g(n) = actual cost from start to n
+        - h(n) = estimated cost from n to goal (heuristic)
         """
         if start not in self.graph.nodes or goal not in self.graph.nodes:
             return {'error': 'Start or goal not in graph'}
@@ -134,6 +141,7 @@ class AStarAlgorithm(PathfindingAlgorithm):
 class DijkstraAlgorithm(PathfindingAlgorithm):
     """
     Dijkstra algorithm (A* with zero heuristic).
+    Guarantees optimal path but explores more nodes.
     """
     
     def find_path(self, start: Tuple, goal: Tuple) -> Dict:
@@ -189,6 +197,7 @@ class DijkstraAlgorithm(PathfindingAlgorithm):
 class BFSAlgorithm(PathfindingAlgorithm):
     """
     Breadth-First Search (ignores costs, only distance in nodes).
+    Finds shortest path in terms of number of steps, not cost.
     """
     
     def find_path(self, start: Tuple, goal: Tuple) -> Dict:
@@ -196,7 +205,7 @@ class BFSAlgorithm(PathfindingAlgorithm):
             return {'error': 'Start or goal not in graph'}
         
         queue = deque([start])
-        came_from = {start: None}
+        came_from = {start: None}  # IMPORTANT: start has no parent
         self.visited_nodes = []
         nodes_explored = 0
         
@@ -214,6 +223,7 @@ class BFSAlgorithm(PathfindingAlgorithm):
                 self.stats = {
                     'nodes_explored': nodes_explored,
                     'path_length': len(path)
+                    # BFS doesn't track cost
                 }
                 
                 return {
