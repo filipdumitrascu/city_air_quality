@@ -31,3 +31,19 @@ def manhattan_distance(x1: float, y1: float,
                       x2: float, y2: float) -> float:
     """Manhattan distance in grid."""
     return abs(x2 - x1) + abs(y2 - y1)
+
+
+def calculate_pollution_score(pm10: float, pm25: float, no2: float) -> float:
+    """
+    Calculate pollution score based on WHO guidelines.
+    PM10 limit: 50 μg/m³
+    PM2.5 limit: 25 μg/m³
+    NO2 limit: 40 μg/m³
+    """
+    score = (
+        (pm10 / 50.0) * 0.4 +
+        (pm25 / 25.0) * 0.4 +
+        (no2 / 40.0) * 0.2
+    )
+    return max(0.0, score)
+
