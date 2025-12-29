@@ -1,44 +1,4 @@
 services:
-  client_message_handler:
-    build:
-      context: .
-      dockerfile: microservices/client_message_handler/Dockerfile
-    volumes:
-      - ./credentials.json:/app/credentials.json
-    environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
-    ports:
-      - "8000:8000"
-
-  data_provider_service:
-    build:
-      context: .
-      dockerfile: microservices/data_provider_service/Dockerfile
-    volumes:
-      - ./credentials.json:/app/credentials.json
-    environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
-    ports:
-      - "8001:8001"
-
-  ingest_service:
-    build:
-      context: .
-      dockerfile: microservices/ingest_service/Dockerfile
-    volumes:
-      - ./credentials.json:/app/credentials.json
-    environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
-    ports:
-      - "8002:8002"
-
-  database_service:
-    build:
-      context: .
-      dockerfile: microservices/database_service/Dockerfile
-    ports:
-      - "8003:8003"
-
   redis:
     image: redis:7-alpine
     container_name: cityairq-redis
@@ -57,6 +17,39 @@ services:
       retries: 3
     restart: unless-stopped
 
+  questdb:
+    image: questdb/questdb:latest
+    container_name: cityairq-questdb
+    ports:
+      - "9000:9000"   # Web console
+      - "8812:8812"   # PostgreSQL wire protocol
+      - "9009:9009"   # InfluxDB line protocol
+    volumes:
+      - questdb-data:/var/lib/questdb
+    networks:
+      - backend-network
+    environment:
+      - QDB_CAIRO_COMMIT_LAG=1000
+      - QDB_PG_ENABLED=true
+    restart: unless-stopped
+
+  database-service:
+    build:
+      context: .
+      dockerfile: microservices/database_service/Dockerfile
+    container_name: cityairq-database
+    ports:
+      - "8001:8000"
+    environment:
+      - DATABASE_URL=postgresql://admin:quest@questdb:8812/qdb
+      - LOG_LEVEL=INFO
+    depends_on:
+      questdb:
+        condition: service_started
+    networks:
+      - backend-network
+    restart: unless-stopped
+
   routing-service:
     build: 
       context: ./microservices/routing_service
@@ -68,7 +61,7 @@ services:
       - DATABASE_SERVICE_URL=http://database-service:8000
       - LOG_LEVEL=INFO
     ports:
-      - "8003:8000"
+      - "8080:8000"
     volumes:
       - ./microservices/routing_service/logs:/app/logs
     depends_on:
@@ -80,8 +73,64 @@ services:
       - backend-network
     restart: unless-stopped
 
+  data-provider-service:
+    build:
+      context: .
+      dockerfile: microservices/data_provider_service/Dockerfile
+    container_name: cityairq-data-provider
+    volumes:
+      - ./credentials.json:/app/credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+      - DATABASE_SERVICE_URL=http://database-service:8000
+    ports:
+      - "8002:8001"
+    depends_on:
+      - database-service
+    networks:
+      - backend-network
+    restart: unless-stopped
+
+  ingest-service:
+    build:
+      context: .
+      dockerfile: microservices/ingest_service/Dockerfile
+    container_name: cityairq-ingest
+    volumes:
+      - ./credentials.json:/app/credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+      - DATABASE_SERVICE_URL=http://database-service:8000
+    ports:
+      - "8003:8002"
+    depends_on:
+      - database-service
+    networks:
+      - backend-network
+    restart: unless-stopped
+
+  client-message-handler:
+    build:
+      context: .
+      dockerfile: microservices/client_message_handler/Dockerfile
+    container_name: cityairq-client-handler
+    volumes:
+      - ./credentials.json:/app/credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+      - DATABASE_SERVICE_URL=http://database-service:8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - database-service
+    networks:
+      - backend-network
+    restart: unless-stopped
+
 volumes:
   redis-data:
+    driver: local
+  questdb-data:
     driver: local
 
 networks:
