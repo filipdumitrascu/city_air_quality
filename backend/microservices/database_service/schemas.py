@@ -25,4 +25,4 @@ class GetMeasurementsRequest(BaseModel):
     latitude: float
     longitude: float
     radius: int = Query(..., ge=0),
-    layers: Optional[List[str]] = Query(None) 
+    layers: Optional[List[str]] = Query(None)

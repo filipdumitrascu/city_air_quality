@@ -5,7 +5,7 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "database_service")))
-from database_service.database_service import app
+from backend.microservices.database_service import app
 from unittest.mock import patch
 
 valid_payload = {
@@ -28,7 +28,7 @@ valid_payload = {
 }
 
 @pytest.mark.asyncio
-@patch("database_service.database_service.insert_data")
+@patch("backend.microservices.database_service.insert_data")
 async def test_add_data_success(mock_insert):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -48,7 +48,7 @@ async def test_add_data_invalid_payload():
     assert response.status_code == 422  # FastAPI va da eroare de validare
 
 @pytest.mark.asyncio
-@patch("database_service.database_service.fetch_data")
+@patch("backend.microservices.database_service.fetch_data")
 async def test_get_data_success(mock_fetch):
     mock_fetch.return_value = [
         [

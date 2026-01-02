@@ -6,10 +6,10 @@ from unittest.mock import patch
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ingest_service.ingest_service import process_message
+from backend.microservices.ingest_service import process_message
 
 @pytest.mark.asyncio
-@patch("ingest_service.ingest_service.send_data_to_database")
+@patch("backend.microservices.ingest_service.send_data_to_database")
 async def test_process_message_success(mock_send):
     mock_send.return_value = {"success": True}
 

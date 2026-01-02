@@ -49,4 +49,3 @@ async def get_data_from_database(payload):
     except Exception as e:
         logging.error(f"Unexpected error while sending data to DatabaseServer: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
-

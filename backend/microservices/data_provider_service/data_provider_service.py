@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 
 from database_service.client.database_service_client import get_data_from_database
-from common.message_queue_googlepubsub.pubsub_client import PubSubClientSubscriber, PubSubClientPublisher
+from pubsub.message_queue_googlepubsub.pubsub_client import PubSubClientSubscriber, PubSubClientPublisher
 
 subscription_name = "results_service_messages-sub"
 

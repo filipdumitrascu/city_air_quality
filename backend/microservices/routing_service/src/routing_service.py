@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List
 
-from models import (
+from .models import (
     RouteRequest, 
     RouteResponse, 
     ComparisonRequest,

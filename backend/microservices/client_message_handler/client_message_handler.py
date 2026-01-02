@@ -11,8 +11,8 @@ from queue import Queue
 from fastapi import Request
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from common.message_queue_googlepubsub.pubsub_client import PubSubClientPublisher, PubSubClientSubscriber
-from common.authentification_service.auth import authorize
+from pubsub.message_queue_googlepubsub.pubsub_client import PubSubClientPublisher, PubSubClientSubscriber
+from pubsub.authentification_service.auth import authorize
 
 import redis
 import os
@@ -106,4 +106,3 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    
