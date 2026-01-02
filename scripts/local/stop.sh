@@ -34,6 +34,8 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         backend-database-service:latest \
         backend-ingest-service:latest \
         backend-routing-service:latest \
+        redis:7-alpine \
+        questdb/questdb:latest
         2>/dev/null || true
     
     echo ""

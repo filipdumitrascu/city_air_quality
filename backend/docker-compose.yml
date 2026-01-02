@@ -50,8 +50,8 @@ services:
 
   routing-service:
     build: 
-      context: ./microservices/routing_service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: microservices/routing_service/Dockerfile
     container_name: cityairq-routing
     environment:
       - REDIS_HOST=redis

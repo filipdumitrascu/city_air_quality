@@ -6,16 +6,14 @@ WORKDIR /app
 # Install curl for healthcheck
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-# Copy files
-COPY requirements.txt .
-COPY src/ ./src/
+# Copy routing service files
+COPY microservices/routing_service /app
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Instalează dependențele
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Create logs directory
-RUN mkdir -p /app/logs
-
+# Expose port
 EXPOSE 8000
 
+# Run service
 CMD ["uvicorn", "src.routing_service:app", "--host", "0.0.0.0", "--port", "8000"]
