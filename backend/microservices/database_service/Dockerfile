@@ -2,12 +2,12 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY microservices/database_service/requirements.txt .
+# Copy service files
+COPY microservices/database_service /app
 
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY microservices/database_service/ .
+# Install dependencies
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 EXPOSE 8000
 
-CMD ["python", "database_service.py"]
+CMD ["uvicorn", "database_service:app", "--host", "0.0.0.0", "--port", "8000"]
