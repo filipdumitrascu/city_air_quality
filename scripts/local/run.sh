@@ -47,10 +47,36 @@ fi
 # QuestDB - just check container is running
 echo -n "QuestDB..."
 if docker ps | grep -q cityairq-questdb; then
-    echo " container running (may take 30-60s)"
+    echo " ready"
 else
     echo " container not found"
 fi
+
+
+# Create questdb table
+python3 << 'PYTHON_SCRIPT'
+import psycopg2
+import sys
+
+try:
+    conn = psycopg2.connect('postgresql://admin:quest@localhost:8812/qdb')
+    cur = conn.cursor()
+
+    # Create table
+    with open('config/questdb/schema.sql', 'r') as f:
+        schema = f.read()
+    cur.execute(schema)
+    conn.commit()
+    print("table created")
+    
+    cur.close()
+    conn.close()
+except Exception as e:
+    print(f"error: {e}")
+    sys.exit(1)
+PYTHON_SCRIPT
+
+
 
 # Wait for Database Service
 echo -n "Database Service..."
@@ -70,6 +96,11 @@ else
     echo " not responding"
 fi
 
+
+# Insert in table 
+python3 config/questdb/import_from_excel.py config/questdb/cityairq_sensor_data.xlsx
+
+# Service status
 echo ""
 echo "  Service Status"
 docker compose ps
@@ -77,8 +108,8 @@ docker compose ps
 echo ""
 echo "  Access Services"
 echo "  QuestDB Web UI:     http://localhost:9000"
-echo "  Database Service:   http://localhost:8001/health"
-echo "  Routing Service:    http://localhost:8080/health"
+echo "  Database Service:   http://localhost:8001"
+echo "  Routing Service:    http://localhost:8080"
 echo "  Redis:              localhost:6379"
 echo ""
 echo "  Useful Commands"
