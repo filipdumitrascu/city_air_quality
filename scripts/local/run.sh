@@ -1,10 +1,9 @@
 #!/bin/bash
-# Docker Compose Start Script
-# Builds and starts all CityAirQ services locally
+# Docker Compose Start Script - Clean Output Version
 
 set -e
 
-# Fix messy terminal output
+# Clean terminal output settings
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 export BUILDKIT_PROGRESS=plain
@@ -13,25 +12,24 @@ echo ""
 echo "  CityAirQ - Starting Services"
 echo ""
 
-# Go to backend directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../backend"
 
-# Check if credentials.json exists
+# Check credentials
 if [ ! -f "credentials.json" ]; then
     echo "WARNING: credentials.json not found"
-    echo "Some services may fail without Google Cloud credentials"
     echo ""
 fi
 
-# Build and start services
+# Build and start services - CLEAN WAY
 echo "Building and starting services..."
-docker compose up -d --build
-#docker compose build --progress=plain
-#docker compose up --no-color < /dev/null
-
-
 echo ""
+
+docker compose up -d --build
+
+echo "Containers started"
+echo ""
+
 echo "Waiting for services to be ready..."
 echo ""
 
@@ -44,7 +42,7 @@ else
     echo " not responding"
 fi
 
-# QuestDB - just check container is running
+# Wait for QuestDB
 echo -n "QuestDB..."
 if docker ps | grep -q cityairq-questdb; then
     echo " ready"
@@ -52,9 +50,12 @@ else
     echo " container not found"
 fi
 
+sleep 5
 
-# Create questdb table
-python3 << 'PYTHON_SCRIPT'
+# Create QuestDB schema
+echo -n "Checking QuestDB schema..."
+
+python3 << 'PYTHON_SCRIPT' 2>&1 | grep -v "^$"
 import psycopg2
 import sys
 
@@ -77,10 +78,8 @@ except Exception as e:
 PYTHON_SCRIPT
 
 
-
 # Wait for Database Service
 echo -n "Database Service..."
-sleep 5
 if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
     echo " ready"
 else
@@ -89,21 +88,19 @@ fi
 
 # Wait for Routing Service
 echo -n "Routing Service..."
-sleep 5
 if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
     echo " ready"
 else
     echo " not responding"
 fi
 
-
 # Insert in table 
 python3 config/questdb/import_from_excel.py config/questdb/cityairq_sensor_data.xlsx
 
-# Service status
+
 echo ""
-echo "  Service Status"
-docker compose ps
+echo " Service Status"
+docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || docker compose ps
 
 echo ""
 echo "  Access Services"

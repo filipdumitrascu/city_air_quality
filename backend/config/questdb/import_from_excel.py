@@ -51,8 +51,7 @@ class ExcelImporter:
         
     def validate_excel_format(self, df: pd.DataFrame) -> bool:
         """Validate Excel file has required columns and correct data types."""
-        print("\n[1] Validating Excel format...")
-        
+
         # Check columns
         missing_cols = set(REQUIRED_COLUMNS) - set(df.columns)
         if missing_cols:
@@ -102,7 +101,6 @@ class ExcelImporter:
         # Check timestamp format
         try:
             df['timestamp'] = pd.to_datetime(df['timestamp'])
-            print(f"Timestamps parsed successfully")
             print(f"Time range: {df['timestamp'].min()} to {df['timestamp'].max()}")
         except Exception as e:
             self.errors.append(f"Invalid timestamp format: {e}")
@@ -137,7 +135,7 @@ class ExcelImporter:
             print(df.head(10))
             return len(df)
         
-        print("\n[2] Inserting to QuestDB...")
+        print("\nInserting to QuestDB...")
         
         try:
             conn = psycopg2.connect(**DB_CONFIG)
@@ -184,45 +182,15 @@ class ExcelImporter:
         except Exception as e:
             self.errors.append(f"Database insertion error: {e}")
             return 0
-    
-    def generate_summary(self, df: pd.DataFrame):
-        """Generate summary statistics."""
-        print("IMPORT SUMMARY")
-        
-        print(f"\nTotal readings: {len(df)}")
-        print(f"Unique sensors: {df['sensor_id'].nunique()}")
-        
-        print("\nBy sensor type:")
-        type_counts = df.groupby('sensor_type').size()
-        for sensor_type, count in type_counts.items():
-            print(f"  {sensor_type:10s}: {count:4d} readings")
-        
-        print("\nPollution statistics:")
-        stats = df[['pm10', 'pm25', 'no2']].describe()
-        print(stats.round(2))
-        
-        print("\nTime range:")
-        print(f"  First reading: {df['timestamp'].min()}")
-        print(f"  Last reading:  {df['timestamp'].max()}")
-        print(f"  Duration:      {df['timestamp'].max() - df['timestamp'].min()}")
-        
-        if self.warnings:
-            print("\nWARNINGS:")
-            for warning in self.warnings:
-                print(f"  - {warning}")
 
     def run(self) -> bool:
         """Execute import process."""
-        print("EXCEL TO QUESTDB IMPORT")
-        
+
         # Load and validate
         df = self.load_excel()
         if df is None:
             self.print_errors()
             return False
-        
-        # Show summary
-        self.generate_summary(df)
         
         # Insert to database
         if not self.dry_run:
