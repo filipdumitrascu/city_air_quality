@@ -80,7 +80,7 @@ PYTHON_SCRIPT
 
 # Wait for Database Service
 echo -n "Database Service..."
-if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
+if curl -sf http://localhost:8001/docs > /dev/null 2>&1; then
     echo " ready"
 else
     echo " not responding"
@@ -88,7 +88,7 @@ fi
 
 # Wait for Routing Service
 echo -n "Routing Service..."
-if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+if curl -sf http://localhost:8080/docs > /dev/null 2>&1; then
     echo " ready"
 else
     echo " not responding"
@@ -104,9 +104,12 @@ docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/nul
 
 echo ""
 echo "  Access Services"
-echo "  QuestDB Web UI:     http://localhost:9000"
-echo "  Database Service:   http://localhost:8001"
-echo "  Routing Service:    http://localhost:8080"
+echo "  QuestDB Web:        http://localhost:9000"
+echo "  Client Handler:     http://localhost:8000/docs"
+echo "  Database Service:   http://localhost:8001/docs"
+echo "  Data Provider:      http://localhost:8002/docs"
+echo "  Ingest Service:     http://localhost:8003/docs"
+echo "  Routing Service:    http://localhost:8080/docs"
 echo "  Redis:              localhost:6379"
 echo ""
 echo "  Useful Commands"

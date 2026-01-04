@@ -3,6 +3,7 @@ import logging
 import os
 from psycopg2 import pool
 from fastapi import HTTPException
+import time
 
 logging.basicConfig(
     level=logging.DEBUG, 
@@ -86,35 +87,6 @@ def fetch_data(params=None):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # query = f"""
-        #     SELECT Client, Timestamp, Latitude, Longitude, {', '.join(params[0])} 
-        #     FROM pollution_data
-        #     WHERE ABS(Latitude - %s) <= %s AND ABS(Longitude - %s) <= %s
-        # #     """
-        # query = f"""
-        #     SELECT Client, "Timestamp", "Latitude", "Longitude", {', '.join(params[0])}
-        #     FROM (
-        #         SELECT *,
-        #             ROUND("Latitude", 4) AS lat_rounded,
-        #             ROUND("Longitude", 4) AS lon_rounded
-        #         FROM pollution_data
-        #     )
-        #     LATEST ON "Timestamp" PARTITION BY lat_rounded, lon_rounded
-        #     WHERE ABS("Latitude" - %s) <= %s
-        #     AND ABS("Longitude" - %s) <= %s
-        #     ORDER BY "Timestamp" DESC
-        # """
-        # query = f"""
-        #     SELECT Client, "Timestamp", "Latitude", "Longitude", {', '.join(params[0])}
-        #     FROM (
-        #         SELECT *
-        #         FROM pollution_data
-        #         LATEST ON "Timestamp" PARTITION BY "Latitude", "Longitude"
-        #     )
-        #     WHERE ABS("Latitude" - %s) <= %s
-        #     AND ABS("Longitude" - %s) <= %s
-        #     ORDER BY "Timestamp" DESC
-        # """
 
         query = f"""
              SELECT "Client", 
@@ -138,7 +110,7 @@ def fetch_data(params=None):
         results = cursor.fetchall()
   
         if not results:
-            logging.info("intra aici si da raise")
+            logging.info("No data found for query")
             raise HTTPException(status_code=404, detail="No data found")
         cursor.close()
         return results

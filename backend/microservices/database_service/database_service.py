@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
-from  schemas import InsertPollutionDataRequest
+from schemas import InsertPollutionDataRequest
 from db import insert_data, fetch_data
 import logging
 import os
@@ -27,12 +27,22 @@ logging.basicConfig(
 async def lifespan(app: FastAPI):
     """Inițializează conexiunea la baza de date la pornirea aplicației."""
     init_db()
-    logging.info("Database connection initialized")
+    logging.info("Database service started (connection may retry)")
     yield
     close_db()
     logging.info("Database connection closed")
 
 app = FastAPI(lifespan=lifespan)
+
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {"service": "database_service", "status": "running"}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy", "service": "database_service"}
 
 @app.post("/add_data/")
 async def add_data(payload: InsertPollutionDataRequest):
@@ -79,11 +89,8 @@ def get_coordinate_deltas(radius_km: float, latitude_deg: float):
     """
     Calculează delta de latitudine și longitudine pentru o rază dată (în km),
     la o anumită latitudine (în grade).
-
-    Returnează:
-        (delta_latitude, delta_longitude)
     """
-    # Lat: 1 grad ≈ 111.32 km peste tot pe glob
+    # Lat: 1 grad ≈ 111.32 km
     delta_lat = radius_km / 111.32
 
     # Lng: 1 grad ≈ 111.32 * cos(latitudine)
@@ -107,10 +114,8 @@ async def get_data(
         results = fetch_data(params)
         return results
     except Exception as e:
-        logging.error("a gasit eroare la results")
-        if e.status_code == 404:
-            logging.error("a gasit eroare la result no found")
+        logging.error(f"Error fetching data: {str(e)}")
+        if hasattr(e, 'status_code') and e.status_code == 404:
             raise HTTPException(status_code=404, detail="No data found")
         else:
-            logging.error("a gasit eroare la results la fetching")
             raise HTTPException(status_code=500, detail=f"Error fetching measurements: {str(e)}")
