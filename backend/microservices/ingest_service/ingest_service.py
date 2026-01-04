@@ -49,4 +49,8 @@ async def lifespan(app: FastAPI):
     logging.info("Subscriber started and listening for messages on 'ingest_service_messages-sub'.")
     yield
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Ingest service API",
+    description="Preprocess data send",
+    lifespan=lifespan,
+    version="1.0.0")

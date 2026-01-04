@@ -37,9 +37,9 @@ logger = logging.getLogger(__name__)
 
 # FastAPI app
 app = FastAPI(
-    title="CityAirQ Routing Service",
+    title="Routing Service API",
     description="Pathfinding algorithms for least polluted routes",
-    version="0.1.0"
+    version="1.0.0"
 )
 
 # Initialize cache

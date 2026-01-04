@@ -17,7 +17,6 @@ from pubsub.authentification_service.auth import authorize
 import redis
 import os
 
-# După inițializarea FastAPI
 redis_client = redis.Redis(
     host=os.getenv('REDIS_HOST', 'redis'),
     port=int(os.getenv('REDIS_PORT', 6379)),
@@ -58,7 +57,11 @@ async def lifespan(app: FastAPI):
     logging.info("Subscriber started and listening for messages on 'results_response_messages-sub'.")
     yield
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Client message handler API",
+    description="Handles requests to enter pollution information or read existing data",
+    lifespan=lifespan,
+    version="1.0.0")
 Instrumentator().instrument(app).expose(app)
 
 @app.post("/ingest/")

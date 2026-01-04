@@ -32,7 +32,11 @@ async def lifespan(app: FastAPI):
     close_db()
     logging.info("Database connection closed")
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Database service API",
+    description="Microservice that communicates with database",
+    lifespan=lifespan,
+    version="1.0.0")
 
 @app.get("/")
 async def root():
