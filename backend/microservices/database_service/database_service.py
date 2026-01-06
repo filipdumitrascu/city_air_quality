@@ -25,12 +25,16 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Inițializează conexiunea la baza de date la pornirea aplicației."""
-    init_db()
-    logging.info("Database service started (connection may retry)")
+    try:
+        init_db()
+        logging.info("Database connection initialized")
+    except Exception as e:
+        logging.error(f"Database NOT available at startup: {e}")
     yield
-    close_db()
-    logging.info("Database connection closed")
+    try:
+        close_db()
+    except Exception:
+        pass
 
 app = FastAPI(
     title="Database service API",
@@ -93,8 +97,11 @@ def get_coordinate_deltas(radius_km: float, latitude_deg: float):
     """
     Calculează delta de latitudine și longitudine pentru o rază dată (în km),
     la o anumită latitudine (în grade).
+
+    Returnează:
+        (delta_latitude, delta_longitude)
     """
-    # Lat: 1 grad ≈ 111.32 km
+    # Lat: 1 grad ≈ 111.32 km peste tot pe glob
     delta_lat = radius_km / 111.32
 
     # Lng: 1 grad ≈ 111.32 * cos(latitudine)
@@ -112,14 +119,20 @@ async def get_data(
     layers: Optional[List[str]] = Query(None)
 ):
     """Obține datele de poluare din jurul unei locații."""
+
+    if not layers:
+        layers = ["Temperature","Humidity","Pressure","Altitude","CO2","PM1_0","PM2_5","PM10"]
+
     try:
         delta_lat, delta_lng = get_coordinate_deltas(radius, latitude)
         params = (layers, latitude, delta_lat, longitude, delta_lng)
         results = fetch_data(params)
         return results
     except Exception as e:
-        logging.error(f"Error fetching data: {str(e)}")
-        if hasattr(e, 'status_code') and e.status_code == 404:
+        logging.error("a gasit eroare la results")
+        if e.status_code == 404:
+            logging.error("a gasit eroare la result no found")
             raise HTTPException(status_code=404, detail="No data found")
         else:
+            logging.error("a gasit eroare la results la fetching")
             raise HTTPException(status_code=500, detail=f"Error fetching measurements: {str(e)}")

@@ -3,7 +3,6 @@ import logging
 import os
 from psycopg2 import pool
 from fastapi import HTTPException
-import time
 
 logging.basicConfig(
     level=logging.DEBUG, 
@@ -29,7 +28,8 @@ def init_db():
         return db_pool
     except Exception as e:
         logging.error(f"Error initializing database connection pool: {str(e)}")
-        raise HTTPException(status_code=500, detail="Database connection failed")
+        raise RuntimeError("Database connection failed")
+
 
 def close_db():
     """Închide toate conexiunile din pool la shutdown."""
@@ -42,15 +42,14 @@ def get_db_connection():
     """Obține o conexiune din pool."""
     global db_pool
     if not db_pool:
-        raise HTTPException(status_code=500, detail="Database pool not initialized")
+        init_db()
     try:
         conn = db_pool.getconn()
         if conn.closed:
-            logging.warning("Connection was closed. Retrying...")
             conn = db_pool.getconn()
         return conn
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
+        raise RuntimeError("Database connection error")
 
 def release_db_connection(conn):
     """Eliberează conexiunea înapoi în pool."""
