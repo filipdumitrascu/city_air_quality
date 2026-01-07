@@ -1,111 +1,105 @@
-# src/data_loader.py - Load Real Pollution Data from QuestDB
-
-import os
+import httpx
 import logging
-from datetime import datetime, timedelta
 from typing import List, Dict, Optional
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from .config import get_config
 
 logger = logging.getLogger(__name__)
 
-
 class PollutionDataLoader:
-    """
-    Load pollution data from QuestDB.
-    Supports filtering by sensor type (fixed vs mobile).
-    """
+    """Loads pollution data from Database Service"""
     
-    def __init__(self, db_url: Optional[str] = None):
-        self.db_url = db_url or os.getenv(
-            "DATABASE_URL",
-            "postgresql://admin:quest@localhost:8812/qdb"
+    def __init__(self):
+        self.config = get_config()
+        self.database_url = self.config["database_service_url"]
+    
+    async def fetch_pollution_data(
+        self,
+        lat: float,
+        lon: float,
+        radius_km: float,
+        sensor_types: Optional[List[str]] = None
+    ) -> List[Dict]:
+        """
+        Fetch pollution data from Database Service
+        
+        Args:
+            lat: Center latitude
+            lon: Center longitude
+            radius_km: Search radius in kilometers
+            sensor_types: List of sensor types to include ['fixed', 'mobile']
+        
+        Returns:
+            List of pollution readings
+        """
+        try:
+            # Build query parameters
+            params = {
+                "latitude": lat,
+                "longitude": lon,
+                "radius": radius_km,
+                "layers": ["PM10", "PM2.5", "NO2"]
+            }
+            
+            logger.info(f"Fetching pollution data: lat={lat}, lon={lon}, radius={radius_km}")
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.database_url}/get_data/",
+                    params=params
+                )
+                response.raise_for_status()
+                data = response.json()
+            
+            # Filter by sensor type if specified
+            if sensor_types:
+                filtered_data = [
+                    reading for reading in data
+                    if reading.get("sensor_type") in sensor_types
+                ]
+                logger.info(f"Filtered {len(data)} → {len(filtered_data)} readings by sensor_types={sensor_types}")
+                return filtered_data
+            
+            logger.info(f"Fetched {len(data)} pollution readings")
+            return data
+            
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error fetching pollution data: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching pollution data: {e}")
+            raise
+    
+    async def fetch_area_pollution(
+        self,
+        lat_min: float,
+        lat_max: float,
+        lon_min: float,
+        lon_max: float,
+        sensor_types: Optional[List[str]] = None
+    ) -> List[Dict]:
+        """
+        Fetch pollution data for entire area
+        
+        Args:
+            lat_min, lat_max, lon_min, lon_max: Bounding box
+            sensor_types: Sensor types to include
+        
+        Returns:
+            List of all pollution readings in area
+        """
+        # Calculate center and radius to cover entire area
+        center_lat = (lat_min + lat_max) / 2
+        center_lon = (lon_min + lon_max) / 2
+        
+        # Approximate radius to cover corners (in km)
+        # Using simple lat/lon → km conversion (~111km per degree)
+        lat_diff = (lat_max - lat_min) * 111
+        lon_diff = (lon_max - lon_min) * 111 * 0.7  # cos(44°) ≈ 0.7 for Bucharest
+        radius_km = max(lat_diff, lon_diff) / 2 + 2  # +2km buffer
+        
+        return await self.fetch_pollution_data(
+            center_lat,
+            center_lon,
+            radius_km,
+            sensor_types
         )
-        self.conn = None
-    
-    def connect(self):
-        if self.conn is None or self.conn.closed:
-            try:
-                self.conn = psycopg2.connect(self.db_url)
-                logger.info("Connected to QuestDB")
-            except Exception as e:
-                logger.error(f"Database connection failed: {e}")
-                raise
-    
-    def disconnect(self):
-        if self.conn and not self.conn.closed:
-            self.conn.close()
-    
-    def fetch_fixed_sensors(self, time_window_hours: int = 1) -> List[Dict]:
-        """Get data from stationary sensors only."""
-        self.connect()
-        
-        cutoff_time = datetime.now() - timedelta(hours=time_window_hours)
-        
-        query = """
-            SELECT 
-                latitude as lat,
-                longitude as lon,
-                pm10,
-                pm25,
-                no2,
-                timestamp
-            FROM sensor_readings
-            WHERE sensor_type = 'fixed'
-                AND timestamp >= %s
-                AND latitude BETWEEN 44.35 AND 44.50
-                AND longitude BETWEEN 26.00 AND 26.20
-            ORDER BY timestamp DESC
-        """
-        
-        try:
-            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(query, (cutoff_time,))
-                results = cur.fetchall()
-                logger.info(f"Fetched {len(results)} fixed sensor readings")
-                return [dict(row) for row in results]
-        except Exception as e:
-            logger.error(f"Error fetching fixed sensors: {e}")
-            return []
-    
-    def fetch_mobile_sensors(self, time_window_hours: int = 1) -> List[Dict]:
-        """Get data from mobile sensors (denser coverage)."""
-        self.connect()
-        
-        cutoff_time = datetime.now() - timedelta(hours=time_window_hours)
-        
-        query = """
-            SELECT 
-                latitude as lat,
-                longitude as lon,
-                pm10,
-                pm25,
-                no2,
-                timestamp
-            FROM sensor_readings
-            WHERE sensor_type = 'mobile'
-                AND timestamp >= %s
-                AND latitude BETWEEN 44.35 AND 44.50
-                AND longitude BETWEEN 26.00 AND 26.20
-            ORDER BY timestamp DESC
-        """
-        
-        try:
-            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(query, (cutoff_time,))
-                results = cur.fetchall()
-                logger.info(f"Fetched {len(results)} mobile sensor readings")
-                return [dict(row) for row in results]
-        except Exception as e:
-            logger.error(f"Error fetching mobile sensors: {e}")
-            return []
-    
-    def fetch_all(self, time_window_hours: int = 1) -> List[Dict]:
-        """Fetch both fixed and mobile sensors."""
-        fixed = self.fetch_fixed_sensors(time_window_hours)
-        mobile = self.fetch_mobile_sensors(time_window_hours)
-        
-        all_data = fixed + mobile
-        logger.info(f"Total: {len(all_data)} (fixed: {len(fixed)}, mobile: {len(mobile)})")
-        
-        return all_data

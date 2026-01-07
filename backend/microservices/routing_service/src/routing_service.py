@@ -1,323 +1,213 @@
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse
-import os
+# routing_service/src/routing_service.py
+from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
 import logging
-from datetime import datetime, timedelta
-from typing import List
+import time
+import os
 
-from .models import (
-    RouteRequest, 
-    RouteResponse, 
-    ComparisonRequest,
-    ComparisonResponse
-)
+from .models import RouteRequest, RouteResponse, RouteNode, HealthResponse
+from .config import get_config
+from .data_loader import PollutionDataLoader
 from .graph_builder import PollutionGraph
-from .pathfinding import AStarAlgorithm, DijkstraAlgorithm, BFSAlgorithm
+from .pathfinding import AStarPathfinder
 from .cache_manager import CacheManager
-from .utils import (
-    get_grid_cell,
-    haversine_heuristic,
-    euclidean_heuristic,
-    manhattan_heuristic,
-    zero_heuristic,
-    haversine_distance,
-    calculate_pollution_score
-)
+from .utils import calculate_route_stats
 
-# Logging setup
+# Setup logging
+log_dir = os.path.join(os.path.dirname(__file__), "../logs")
+os.makedirs(log_dir, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/app/logs/routing_service.log'),
+        logging.FileHandler(os.path.join(log_dir, 'routing_service.log')),
         logging.StreamHandler()
     ]
 )
+
 logger = logging.getLogger(__name__)
 
-# FastAPI app
+# Global instances
+cache_manager = None
+data_loader = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize on startup"""
+    global cache_manager, data_loader
+    
+    logger.info("Starting Routing Service...")
+    
+    # Initialize components
+    cache_manager = CacheManager()
+    data_loader = PollutionDataLoader()
+    
+    logger.info("Routing Service ready")
+    yield
+    
+    logger.info("Shutting down Routing Service")
+
 app = FastAPI(
     title="Routing Service API",
-    description="Pathfinding algorithms for least polluted routes",
-    version="1.0.0"
+    description="Calculate pollution-aware routes using A* pathfinding with Redis caching",
+    version="1.0.0",
+    lifespan=lifespan
 )
 
-# Initialize cache
-cache = CacheManager(
-    redis_host=os.getenv("REDIS_HOST", "redis"),
-    redis_port=int(os.getenv("REDIS_PORT", 6379))
-)
-
-# Heuristic mapping
-HEURISTICS = {
-    "haversine": haversine_heuristic,
-    "euclidean": euclidean_heuristic,
-    "manhattan": manhattan_heuristic,
-    "zero": zero_heuristic
-}
-
-# Algorithm mapping
-def get_algorithm_instance(algo_name: str, graph, heuristic_fn=None):
-    """Factory for algorithm instances."""
-    algo_name = algo_name.lower()
-    
-    if algo_name == "astar":
-        return AStarAlgorithm(graph, heuristic_fn=heuristic_fn)
-    elif algo_name == "dijkstra":
-        return DijkstraAlgorithm(graph)
-    elif algo_name == "bfs":
-        return BFSAlgorithm(graph)
-    else:
-        raise ValueError(f"Unknown algorithm: {algo_name}")
-
-
-@app.get("/")
+@app.get("/", tags=["health"])
 async def root():
-    """Root endpoint."""
+    """Root endpoint"""
     return {
-        "service": "CityAirQ Routing Service",
-        "version": "0.1.0",
-        "status": "running"
+        "service": "routing_service",
+        "status": "running",
+        "version": "1.0.0"
     }
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse, tags=["health"])
 async def health_check():
-    """Health check for Kubernetes."""
-    cache_status = "connected" if cache.redis_client else "disconnected"
-    return {
-        "status": "healthy",
-        "service": "routing-service",
-        "cache": cache_status
-    }
-
-@app.post("/route/optimal", response_model=RouteResponse)
-async def calculate_optimal_route(request: RouteRequest):
-    """
-    Calculate optimal route between two points.
+    """Health check endpoint"""
+    redis_ok = cache_manager.is_connected() if cache_manager else False
     
-    Flow:
-    1. Check cache
-    2. If miss: fetch pollution data, build graph, run algorithm
-    3. Cache result
-    4. Return route
-    """
+    # Test database connection
+    db_ok = False
     try:
-        logger.info(f"Route request: {request.algorithm} from ({request.start_lat}, {request.start_lon}) to ({request.end_lat}, {request.end_lon})")
+        # Quick ping to database service
+        await data_loader.fetch_pollution_data(44.43, 26.10, 1.0, ["fixed"])
+        db_ok = True
+    except:
+        pass
+    
+    return HealthResponse(
+        status="healthy" if (redis_ok and db_ok) else "degraded",
+        service="routing_service",
+        redis_connected=redis_ok,
+        database_connected=db_ok
+    )
+
+@app.post("/route", response_model=RouteResponse, tags=["routing"])
+async def calculate_route(request: RouteRequest):
+    """
+    Calculate pollution-aware route from start to goal
+    
+    Parameters:
+    - **start**: Starting coordinate
+    - **goal**: Destination coordinate  
+    - **alpha**: Pollution weight (0.0 = fastest, 1.0 = cleanest)
+    - **sensor_types**: Which sensors to use (["fixed"], ["mobile"], or ["fixed", "mobile"])
+    
+    Returns optimal route with statistics
+    """
+    start_time = time.time()
+    
+    try:
+        logger.info(f"Route request: {request.start} → {request.goal}, alpha={request.alpha}, sensors={request.sensor_types}")
         
-        # Check cache
-        cached_route = cache.get_cached_route(
-            request.start_lat, request.start_lon,
-            request.end_lat, request.end_lon,
-            request.algorithm,
-            request.time_window_hours
+        # Check cache first
+        cache_key = cache_manager.generate_cache_key(
+            request.start,
+            request.goal,
+            request.alpha,
+            request.sensor_types
         )
         
+        cached_route = cache_manager.get_cached_route(cache_key)
         if cached_route:
-            logger.info("Returning cached route")
-            return JSONResponse(cached_route)
-        
-        # Cache miss - compute route
-        logger.info("Cache miss - computing route")
+            cached_route["cached"] = True
+            cached_route["calculation_time_ms"] = round((time.time() - start_time) * 1000, 2)
+            logger.info(f"Returning cached route (took {cached_route['calculation_time_ms']}ms)")
+            return RouteResponse(**cached_route)
         
         # Fetch pollution data
-        pollution_data = await fetch_pollution_data(request.time_window_hours)
+        config = get_config()
+        bounds = config["bucharest_bounds"]
         
-        if not pollution_data:
-            raise HTTPException(status_code=404, detail="No pollution data available")
-        
-        # Build graph
-        graph = PollutionGraph(resolution=0.001)
-        graph.build_from_pollution_data(pollution_data)
-        
-        # Get algorithm instance
-        heuristic_fn = HEURISTICS.get(request.heuristic, haversine_heuristic)
-        algorithm = get_algorithm_instance(request.algorithm, graph, heuristic_fn)
-        
-        # Convert coordinates to grid cells
-        start_cell = get_grid_cell(request.start_lat, request.start_lon)
-        end_cell = get_grid_cell(request.end_lat, request.end_lon)
-        
-        # Find path
-        result = algorithm.find_path(start_cell, end_cell)
-        
-        if 'error' in result:
-            raise HTTPException(status_code=404, detail=result['error'])
-        
-        # Convert to response format
-        response = convert_to_response(result, graph, request.algorithm, algorithm.get_stats())
-        
-        # Cache result
-        cache.cache_route(
-            request.start_lat, request.start_lon,
-            request.end_lat, request.end_lon,
-            request.algorithm,
-            request.time_window_hours,
-            response,
-            ttl_minutes=15
+        pollution_data = await data_loader.fetch_area_pollution(
+            bounds["lat_min"],
+            bounds["lat_max"],
+            bounds["lon_min"],
+            bounds["lon_max"],
+            sensor_types=request.sensor_types
         )
         
-        logger.info(f"Route computed: {len(result['path'])} nodes, {algorithm.get_stats()['nodes_explored']} explored")
+        if not pollution_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No pollution data found for sensor types: {request.sensor_types}"
+            )
         
-        return response
+        logger.info(f"Fetched {len(pollution_data)} pollution readings")
         
+        # Build graph
+        graph = PollutionGraph(alpha=request.alpha)
+        graph.add_pollution_data(pollution_data)
+        graph.build_edges()
+        
+        # Find path
+        pathfinder = AStarPathfinder(graph)
+        path = pathfinder.find_path(
+            (request.start.lat, request.start.lon),
+            (request.goal.lat, request.goal.lon)
+        )
+        
+        if not path:
+            raise HTTPException(
+                status_code=404,
+                detail="No path found between start and goal"
+            )
+        
+        # Calculate stats
+        stats = calculate_route_stats(path, graph.pollution_data)
+        
+        # Build response
+        route_nodes = [
+            RouteNode(
+                lat=node[0],
+                lon=node[1],
+                pollution_level=graph.get_pollution(node)
+            )
+            for node in path
+        ]
+        
+        calculation_time = round((time.time() - start_time) * 1000, 2)
+        
+        response_data = {
+            "route": route_nodes,
+            "total_distance_km": stats["total_distance_km"],
+            "avg_pollution": stats["avg_pollution"],
+            "max_pollution": stats["max_pollution"],
+            "calculation_time_ms": calculation_time,
+            "cached": False,
+            "sensor_types_used": request.sensor_types,
+            "nodes_evaluated": pathfinder.nodes_evaluated
+        }
+        
+        # Cache result
+        cache_manager.cache_route(cache_key, response_data)
+        
+        logger.info(f"Route calculated: {len(path)} waypoints, {stats['total_distance_km']}km, {calculation_time}ms")
+        
+        return RouteResponse(**response_data)
+    
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in calculate_optimal_route: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error calculating route: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
-@app.post("/route/compare", response_model=ComparisonResponse)
-async def compare_algorithms(request: ComparisonRequest):
-    """
-    Compare multiple algorithms on the same route.
-    KEY ENDPOINT FOR THESIS!
-    """
+@app.get("/cache/stats", tags=["cache"])
+async def cache_stats():
+    """Get cache statistics"""
+    if not cache_manager.is_connected():
+        return {"error": "Redis not connected"}
+    
     try:
-        logger.info(f"Comparison request: {request.algorithms}")
-        
-        # Fetch pollution data
-        pollution_data = await fetch_pollution_data(request.time_window_hours)
-        
-        if not pollution_data:
-            raise HTTPException(status_code=404, detail="No pollution data available")
-        
-        # Build graph
-        graph = PollutionGraph(resolution=0.001)
-        graph.build_from_pollution_data(pollution_data)
-        
-        # Convert coordinates
-        start_cell = get_grid_cell(request.start_lat, request.start_lon)
-        end_cell = get_grid_cell(request.end_lat, request.end_lon)
-        
-        # Run all algorithms
-        results = {}
-        best_score = float('inf')
-        best_algo = None
-        
-        for algo_name in request.algorithms:
-            try:
-                algorithm = get_algorithm_instance(algo_name, graph)
-                result = algorithm.find_path(start_cell, end_cell)
-                
-                if 'error' not in result:
-                    stats = algorithm.get_stats()
-                    results[algo_name] = {
-                        "path_length": stats['path_length'],
-                        "nodes_explored": stats['nodes_explored'],
-                        "total_cost": stats.get('total_cost', 0),
-                        "path": result['path'][:10]  # First 10 nodes for brevity
-                    }
-                    
-                    # Determine best (lowest cost)
-                    if stats.get('total_cost', float('inf')) < best_score:
-                        best_score = stats.get('total_cost', float('inf'))
-                        best_algo = algo_name
-                        
-            except Exception as e:
-                logger.error(f"Error running {algo_name}: {e}")
-                results[algo_name] = {"error": str(e)}
-        
-        # Calculate comparison metrics
-        comparison_metrics = {
-            "fastest_exploration": min(results.items(), key=lambda x: x[1].get('nodes_explored', float('inf')))[0],
-            "shortest_path": min(results.items(), key=lambda x: x[1].get('path_length', float('inf')))[0],
-            "lowest_cost": best_algo
-        }
-        
+        info = cache_manager.redis_client.info("stats")
         return {
-            "results": results,
-            "best_algorithm": best_algo,
-            "comparison_metrics": comparison_metrics
+            "total_commands_processed": info.get("total_commands_processed", 0),
+            "keyspace_hits": info.get("keyspace_hits", 0),
+            "keyspace_misses": info.get("keyspace_misses", 0),
+            "connected_clients": info.get("connected_clients", 0)
         }
-        
     except Exception as e:
-        logger.error(f"Error in compare_algorithms: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/cache/stats")
-async def get_cache_stats():
-    """Get cache statistics."""
-    return cache.get_stats()
-
-@app.delete("/cache/clear")
-async def clear_cache():
-    """Clear all cache (admin endpoint)."""
-    cache.clear_cache()
-    return {"message": "Cache cleared"}
-
-
-async def fetch_pollution_data(time_window_hours: int) -> List[dict]:
-    """
-    Fetch pollution data from database service.
-    TODO: Implement actual HTTP call to database-service.
-    For now, returns mock data for testing.
-    """
-    # Mock data for development
-    mock_data = [
-        {'latitude': 44.4268, 'longitude': 26.1025, 'pm10': 30, 'pm2_5': 15, 'no2': 20},
-        {'latitude': 44.4320, 'longitude': 26.1050, 'pm10': 45, 'pm2_5': 22, 'no2': 35},
-        {'latitude': 44.4380, 'longitude': 26.1100, 'pm10': 25, 'pm2_5': 12, 'no2': 18},
-        {'latitude': 44.4400, 'longitude': 26.1150, 'pm10': 50, 'pm2_5': 28, 'no2': 40},
-        {'latitude': 44.4450, 'longitude': 26.1200, 'pm10': 35, 'pm2_5': 18, 'no2': 25},
-    ]
-    
-    logger.info(f"Fetching pollution data (time_window: {time_window_hours}h)")
-    
-    # TODO: Replace with actual database call
-    # database_url = os.getenv('DATABASE_SERVICE_URL', 'http://database-service:8000')
-    # async with httpx.AsyncClient() as client:
-    #     response = await client.post(
-    #         f"{database_url}/query",
-    #         json={"time_window_hours": time_window_hours}
-    #     )
-    #     return response.json()
-    
-    return mock_data
-
-
-def convert_to_response(result: dict, graph, algorithm_name: str, stats: dict) -> dict:
-    """Convert internal result format to API response."""
-    path_nodes = []
-    total_distance = 0
-    total_pollution = 0
-    
-    for i, cell in enumerate(result['path']):
-        node = graph.nodes[cell]
-        path_nodes.append({
-            'cell': cell,
-            'lat': node['lat'],
-            'lon': node['lon'],
-            'pollution': node['pollution']
-        })
-        
-        # Calculate distance
-        if i > 0:
-            prev_cell = result['path'][i-1]
-            prev_node = graph.nodes[prev_cell]
-            total_distance += haversine_distance(
-                prev_node['lat'], prev_node['lon'],
-                node['lat'], node['lon']
-            )
-        
-        # Accumulate pollution
-        total_pollution += calculate_pollution_score(**node['pollution'])
-    
-    avg_pollution = total_pollution / len(result['path']) if result['path'] else 0
-    
-    # Estimate time (assuming 15 km/h cycling speed)
-    estimated_time = (total_distance / 15) * 60  # minutes
-    
-    return {
-        'path': path_nodes,
-        'total_distance_km': round(total_distance, 2),
-        'avg_pollution_score': round(avg_pollution, 3),
-        'estimated_time_minutes': round(estimated_time, 1),
-        'nodes_explored': stats['nodes_explored'],
-        'algorithm_used': algorithm_name,
-        'stats': stats
-    }
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        return {"error": str(e)}
