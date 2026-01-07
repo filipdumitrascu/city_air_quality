@@ -115,7 +115,7 @@ def get_coordinate_deltas(radius_km: float, latitude_deg: float):
 async def get_data(
     latitude: float = Query(...),
     longitude: float = Query(...),
-    radius: int = Query(..., ge=0),
+    radius: float = Query(..., ge=0),
     layers: Optional[List[str]] = Query(None)
 ):
     """Obține datele de poluare din jurul unei locații."""
@@ -128,11 +128,10 @@ async def get_data(
         params = (layers, latitude, delta_lat, longitude, delta_lng)
         results = fetch_data(params)
         return results
+    except HTTPException as http_exc:
+        logging.error(f"HTTP Exception: {http_exc}")
+        raise http_exc
     except Exception as e:
-        logging.error("a gasit eroare la results")
-        if e.status_code == 404:
-            logging.error("a gasit eroare la result no found")
-            raise HTTPException(status_code=404, detail="No data found")
-        else:
-            logging.error("a gasit eroare la results la fetching")
-            raise HTTPException(status_code=500, detail=f"Error fetching measurements: {str(e)}")
+        logging.error(f"Error fetching data: {str(e)}")
+        logging.exception(e)
+        raise HTTPException(status_code=500, detail=f"Error fetching measurements: {str(e)}")

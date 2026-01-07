@@ -1,6 +1,7 @@
 from config import get_db_config
 import logging
 import os
+import math
 from psycopg2 import pool
 from fastapi import HTTPException
 
@@ -79,7 +80,27 @@ def insert_data(params=None):
         if conn:
             release_db_connection(conn)
 
+def get_coordinate_deltas(radius_km: float, latitude: float):
+    """
+    Calculează delta-urile de latitudine și longitudine pentru un radius dat.
     
+    Args:
+        radius_km: Raza în kilometri
+        latitude: Latitudinea centrului
+    
+    Returns:
+        (delta_lat, delta_lon): Diferențele de coordonate
+    """
+    
+    # 1 grad latitudine ≈ 111 km
+    delta_lat = radius_km / 111.0
+    
+    # 1 grad longitudine depinde de latitudine
+    # la latitudine λ: 1° lon ≈ 111 * cos(λ) km
+    delta_lon = radius_km / (111.0 * math.cos(math.radians(latitude)))
+    
+    return delta_lat, delta_lon
+
 def fetch_data(params=None):
     """Execută un SELECT în baza de date folosind o conexiune din pool."""
     conn = None
@@ -97,7 +118,7 @@ def fetch_data(params=None):
                     SELECT *
                     FROM (
                         SELECT *, ROUND("Latitude", 4) AS lat4, ROUND("Longitude", 4) AS lng4
-                        FROM pollution_data
+                        FROM sensor_readings
                     )
                     LATEST ON "Timestamp" PARTITION BY lat4, lng4
                 )
