@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from backend.microservices.client_message_handler import app, response_queue
+from microservices.client_message_handler.client_message_handler import app, response_queue
 
 valid_payload = {
     "clientId": "clientId-a12b34cd5678ef90",
@@ -34,8 +34,8 @@ test_response = json.dumps([
     ]
 ])
 @pytest.mark.asyncio
-@patch("backend.microservices.client_message_handler.authorize", return_value=None)
-@patch("backend.microservices.client_message_handler.PubSubClientPublisher.publish_message")
+@patch("client_message_handler.client_message_handler.authorize", return_value=None)
+@patch("client_message_handler.client_message_handler.PubSubClientPublisher.publish_message")
 async def test_ingest_data_success(mock_publish, mock_auth):
     async with AsyncClient(app=app, base_url="http://test") as ac:
         response = await ac.post("/ingest/", json=valid_payload, headers={"x-auth-token": "test-token"})
@@ -51,9 +51,9 @@ def client():
     return TestClient(app)
 
 @pytest.mark.asyncio
-@patch("backend.microservices.client_message_handler.authorize", new_callable=AsyncMock)
-@patch("backend.microservices.client_message_handler.PubSubClientPublisher.publish_message")
-@patch("backend.microservices.client_message_handler.response_queue")
+@patch("client_message_handler.client_message_handler.authorize", new_callable=AsyncMock)
+@patch("client_message_handler.client_message_handler.PubSubClientPublisher.publish_message")
+@patch("client_message_handler.client_message_handler.response_queue")
 async def test_get_data_success(mock_queue, mock_publish, mock_authorize):
     mock_authorize.return_value = None
     mock_queue.empty.return_value = False
