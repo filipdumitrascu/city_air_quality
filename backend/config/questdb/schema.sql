@@ -2,7 +2,7 @@
 -- Purpose: Store pollution measurements from fixed and mobile sensors
 
 -- Drop table if exists (for clean reinstall)
--- DROP TABLE IF EXISTS sensor_readings;
+DROP TABLE IF EXISTS sensor_readings;
 
 -- Main sensor readings table
 CREATE TABLE IF NOT EXISTS sensor_readings (
@@ -24,19 +24,3 @@ SELECT
     'sensor_readings table created successfully' as status,
     COUNT(*) as row_count 
 FROM sensor_readings;
-
--- Useful queries for verification:
-
--- Count by sensor type
--- SELECT sensor_type, COUNT(*) as count FROM sensor_readings GROUP BY sensor_type;
-
--- Latest readings per sensor
--- SELECT DISTINCT sensor_id, sensor_type, last(pm10), last(timestamp) 
--- FROM sensor_readings 
--- SAMPLE BY 1d ALIGN TO CALENDAR;
-
--- Average pollution by sensor type
--- SELECT sensor_type, AVG(pm10) as avg_pm10, AVG(pm25) as avg_pm25 
--- FROM sensor_readings 
--- WHERE timestamp > dateadd('d', -1, now()) 
--- GROUP BY sensor_type;
