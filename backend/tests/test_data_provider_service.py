@@ -7,11 +7,11 @@ from unittest.mock import patch
 # Adaugă path-ul pentru a importa corect
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from backend.microservices.data_provider_service import process_message
+from microservices.data_provider_service.data_provider_service import process_message
 
 @pytest.mark.asyncio
-@patch("backend.microservices.data_provider_service.get_data_from_database")
-@patch("backend.microservices.data_provider_service.PubSubClientPublisher.publish_message")
+@patch("data_provider_service.data_provider_service.get_data_from_database")
+@patch("data_provider_service.data_provider_service.PubSubClientPublisher.publish_message")
 async def test_process_message_success(mock_publish, mock_get_data):
     mock_get_data.return_value = {
         "Temperature": 30.5,
