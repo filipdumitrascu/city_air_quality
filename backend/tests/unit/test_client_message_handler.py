@@ -1,15 +1,12 @@
 import pytest
-import sys
-import os
 import json
 from unittest.mock import patch, AsyncMock
 from httpx import AsyncClient
 from fastapi.testclient import TestClient
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 from microservices.client_message_handler.client_message_handler import app, response_queue
 
+# Test data
 valid_payload = {
     "clientId": "clientId-a12b34cd5678ef90",
     "timestamp": 1718699260,
@@ -33,10 +30,13 @@ test_response = json.dumps([
         30.5
     ]
 ])
+
+
 @pytest.mark.asyncio
-@patch("client_message_handler.client_message_handler.authorize", return_value=None)
-@patch("client_message_handler.client_message_handler.PubSubClientPublisher.publish_message")
+@patch("microservices.client_message_handler.client_message_handler.authorize", return_value=None)
+@patch("microservices.client_message_handler.client_message_handler.PubSubClientPublisher.publish_message")
 async def test_ingest_data_success(mock_publish, mock_auth):
+    """Test /ingest/ endpoint publishes message to PubSub"""
     async with AsyncClient(app=app, base_url="http://test") as ac:
         response = await ac.post("/ingest/", json=valid_payload, headers={"x-auth-token": "test-token"})
 
@@ -46,15 +46,12 @@ async def test_ingest_data_success(mock_publish, mock_auth):
     mock_publish.assert_called_once_with("ingest_service_messages", valid_payload)
 
 
-@pytest.fixture
-def client():
-    return TestClient(app)
-
 @pytest.mark.asyncio
-@patch("client_message_handler.client_message_handler.authorize", new_callable=AsyncMock)
-@patch("client_message_handler.client_message_handler.PubSubClientPublisher.publish_message")
-@patch("client_message_handler.client_message_handler.response_queue")
+@patch("microservices.client_message_handler.client_message_handler.authorize", new_callable=AsyncMock)
+@patch("microservices.client_message_handler.client_message_handler.PubSubClientPublisher.publish_message")
+@patch("microservices.client_message_handler.client_message_handler.response_queue")
 async def test_get_data_success(mock_queue, mock_publish, mock_authorize):
+    """Test /results/ endpoint retrieves data from response queue"""
     mock_authorize.return_value = None
     mock_queue.empty.return_value = False
     mock_queue.get_nowait.return_value = test_response
