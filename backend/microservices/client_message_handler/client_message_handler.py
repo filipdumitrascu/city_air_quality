@@ -23,6 +23,7 @@ redis_client = redis.Redis(
     decode_responses=True
 )
 
+
 # Create logs directory and configure file-based logging
 log_dir = os.path.join(os.path.dirname(__file__), "logs")
 os.makedirs(log_dir, exist_ok=True)
@@ -37,6 +38,7 @@ logging.basicConfig(
     filemode='w',
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
 
 # Queue to temporarily store responses from data provider service
 # Works as a bridge between PubSub subscriber and HTTP response
