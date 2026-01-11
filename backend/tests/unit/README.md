@@ -2,4 +2,5 @@
 
 ## Command
 
-pytest test_*.py -v
+chmod +x unit_testing.sh
+./unit_testing.sh

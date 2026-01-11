@@ -1,10 +1,12 @@
 import pytest
 import json
+import sys
+import os
 from unittest.mock import patch, AsyncMock
 from httpx import AsyncClient
-from fastapi.testclient import TestClient
 
-from microservices.client_message_handler.client_message_handler import app, response_queue
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from client_message_handler import app, response_queue
 
 # Test data
 valid_payload = {
@@ -33,8 +35,8 @@ test_response = json.dumps([
 
 
 @pytest.mark.asyncio
-@patch("microservices.client_message_handler.client_message_handler.authorize", return_value=None)
-@patch("microservices.client_message_handler.client_message_handler.PubSubClientPublisher.publish_message")
+@patch("client_message_handler.authorize", return_value=None)
+@patch("client_message_handler.PubSubClientPublisher.publish_message")
 async def test_ingest_data_success(mock_publish, mock_auth):
     """Test /ingest/ endpoint publishes message to PubSub"""
     async with AsyncClient(app=app, base_url="http://test") as ac:
@@ -47,9 +49,9 @@ async def test_ingest_data_success(mock_publish, mock_auth):
 
 
 @pytest.mark.asyncio
-@patch("microservices.client_message_handler.client_message_handler.authorize", new_callable=AsyncMock)
-@patch("microservices.client_message_handler.client_message_handler.PubSubClientPublisher.publish_message")
-@patch("microservices.client_message_handler.client_message_handler.response_queue")
+@patch("client_message_handler.authorize", new_callable=AsyncMock)
+@patch("client_message_handler.PubSubClientPublisher.publish_message")
+@patch("client_message_handler.response_queue")
 async def test_get_data_success(mock_queue, mock_publish, mock_authorize):
     """Test /results/ endpoint retrieves data from response queue"""
     mock_authorize.return_value = None
@@ -58,7 +60,7 @@ async def test_get_data_success(mock_queue, mock_publish, mock_authorize):
 
     async with AsyncClient(app=app, base_url="http://test") as ac:
         response = await ac.request(
-            method="GET",
+            method="POST",
             url="/results/",
             headers={"x-auth-token": "dummy-token"},
             content=json.dumps(test_payload)

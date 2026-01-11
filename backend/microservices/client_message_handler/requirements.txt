@@ -1,3 +1,4 @@
+# Production dependencies
 fastapi==0.115.8
 google-auth==2.38.0
 google-auth-httplib2==0.2.0
@@ -9,3 +10,8 @@ requests-oauthlib==2.0.0
 uvicorn==0.34.0
 prometheus_fastapi_instrumentator
 redis==5.0.1
+
+# Testing dependencies
+pytest==7.4.4
+pytest-asyncio==0.21.1
+httpx==0.25.2
