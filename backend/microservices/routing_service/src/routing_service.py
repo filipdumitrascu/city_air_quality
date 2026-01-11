@@ -21,16 +21,14 @@ os.makedirs(log_dir, exist_ok=True)
 
 # Configure file-based logging for Routing Service
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(log_dir, 'routing_service.log')),
-        logging.StreamHandler()
+        logging.FileHandler(os.path.join(log_dir, 'routing_service.log'), mode='w')
     ]
 )
 
 logger = logging.getLogger(__name__)
-
 
 cache_manager = None
 data_loader = None
