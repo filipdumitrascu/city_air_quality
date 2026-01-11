@@ -4,6 +4,7 @@ import os
 import time
 import json
 import asyncio
+import hashlib
 from fastapi import Header
 from fastapi.responses import JSONResponse
 from queue import Queue
@@ -16,11 +17,15 @@ from pubsub.authentification_service.auth import authorize
 
 import redis
 
-# Connect to Redis for potential caching/session management
+
+# Connect to Redis for caching query results
 redis_client = redis.Redis(
     host=os.getenv('REDIS_HOST', 'redis'),
     port=int(os.getenv('REDIS_PORT', 6379)),
-    decode_responses=True
+    db=int(os.getenv('REDIS_DB', 0)),
+    decode_responses=True,
+    socket_connect_timeout=5,
+    socket_timeout=5
 )
 
 
@@ -38,6 +43,36 @@ logging.basicConfig(
     filemode='w',
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+
+# Test Redis connection at startup
+try:
+    redis_client.ping()
+    logging.info(f"Redis connected at {os.getenv('REDIS_HOST', 'redis')}:6379")
+except Exception as e:
+    logging.warning(f"Redis unavailable (caching disabled): {e}")
+
+
+def generate_cache_key(payload: dict) -> str:
+    """
+    Generate unique cache key from query payload.
+    
+    Args:
+        payload: Query parameters (latitude, longitude, radius, layers)
+    
+    Returns:
+        Cache key string (e.g., 'client_query:abc123')
+    """
+    # Extract and sort parameters for consistent keys
+    key_data = json.dumps({
+        'latitude': round(payload.get('latitude', 0), 4),
+        'longitude': round(payload.get('longitude', 0), 4),
+        'radius': payload.get('radius', 0),
+        'layers': sorted(payload.get('layers', []))
+    }, sort_keys=True)
+    
+    hash_hex = hashlib.md5(key_data.encode()).hexdigest()
+    return f"client_query:{hash_hex}"
 
 
 # Queue to temporarily store responses from data provider service
@@ -77,6 +112,8 @@ async def process_results_message(message):
 # This listens for responses from Data Provider Service
 results_subscriber = PubSubClientSubscriber("results_response_messages-sub", process_results_message)
 
+
+# Fast API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -99,11 +136,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
 # Prometheus metrics for monitoring
 Instrumentator().instrument(app).expose(app)
 
 
-# ENDPOINT: /ingest/
+# Endpoint ingest
 @app.post("/ingest/")
 async def ingest_data(payload: dict, x_auth_token: str = Header(None)):
     """
@@ -141,11 +179,17 @@ async def ingest_data(payload: dict, x_auth_token: str = Header(None)):
             detail=f"Error while sending the request into the message queue"
         )
 
-# ENDPOINT: /results/
+# Endpoint results with redis caching
 @app.post("/results/")
 async def get_data(payload: dict, x_auth_token: str = Header(None)):
     """
-    Query pollution data via PubSub request-response pattern.
+    Query pollution data via PubSub request-response pattern with Redis caching.
+    
+    Cache strategy:
+    1. Generate cache key from query parameters
+    2. Check Redis for cached result
+    3. If HIT: return cached data immediately
+    4. If MISS: query via PubSub, cache result, return
     
     Flow:
     1. Client sends query (location, radius, pollution layers)
@@ -165,9 +209,26 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
         404: Error from data provider
         408: Timeout (no response within 30 seconds)
         500: Internal server error
+
+    Cache TTL: 3 minutes
     """
     # await authorize(x_auth_token)
     
+    # Redis cache check
+    cache_key = generate_cache_key(payload)
+    
+    try:
+        cached_result = redis_client.get(cache_key)
+        if cached_result:
+            logging.info(f" Cache HIT: {cache_key}")
+            return {"data": json.loads(cached_result), "cached": True}
+        else:
+            logging.info(f"✗ Cache MISS: {cache_key}")
+    except Exception as e:
+        # Redis error - continue without cache
+        logging.warning(f"Redis error (continuing without cache): {e}")
+    
+    # Pubsub queery (Cache miss)
     try:
         # Publish query request to PubSub
         PubSubClientPublisher.publish_message("results_service_messages", payload)
@@ -197,9 +258,25 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
                 detail=f"Error received from results service: {error_message}"
             )
         
-        # Parse and return successful response
+        # Parse successful response
         response_data = json.loads(response_data)
-        return {"data": response_data}
+        
+        # ═══════════════════════════════════════════════════════════
+        # CACHE RESULT
+        # ═══════════════════════════════════════════════════════════
+        try:
+            # Cache for 3 minutes (180 seconds) - shorter TTL than DB layer
+            redis_client.setex(
+                cache_key,
+                180,  # TTL in seconds
+                json.dumps(response_data)
+            )
+            logging.info(f" Cached result: {cache_key} (TTL: 180s)")
+        except Exception as e:
+            # Failed to cache - not critical, continue
+            logging.warning(f"Failed to cache result: {e}")
+        
+        return {"data": response_data, "cached": False}
         
     except HTTPException as e:
         logging.error(f"{str(e)}")
@@ -207,3 +284,42 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# Cache management endpoints (for debugging/monitoring)
+@app.get("/cache/stats")
+async def cache_stats():
+    """Get Redis cache statistics for Client Message Handler"""
+    try:
+        info = redis_client.info("stats")
+        keyspace = redis_client.info("keyspace")
+        
+        # Count only client_query:* keys
+        client_keys = len(redis_client.keys("client_query:*"))
+        
+        return {
+            "connected": True,
+            "total_commands": info.get("total_commands_processed", 0),
+            "hits": info.get("keyspace_hits", 0),
+            "misses": info.get("keyspace_misses", 0),
+            "hit_rate_percent": round(
+                (info.get("keyspace_hits", 0) / max(info.get("total_commands_processed", 1), 1)) * 100, 
+                2
+            ),
+            "cached_client_queries": client_keys
+        }
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
+
+@app.delete("/cache/clear")
+async def clear_cache():
+    """Clear cached queries for Client Message Handler"""
+    try:
+        keys = redis_client.keys("client_query:*")
+        if keys:
+            redis_client.delete(*keys)
+            logging.info(f" Cleared {len(keys)} cached client queries")
+            return {"cleared": len(keys)}
+        return {"cleared": 0, "message": "No cached queries to clear"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")
