@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict, Any
 
 class Coordinate(BaseModel):
     """Geographic coordinate"""
@@ -26,18 +26,32 @@ class RouteNode(BaseModel):
     lat: float
     lon: float
     pollution_level: Optional[float] = None
-    distance_from_start: Optional[float] = None
 
-class RouteResponse(BaseModel):
-    """Response with calculated route"""
-    route: List[RouteNode]
-    total_distance_km: float
-    avg_pollution: float
-    max_pollution: float
+class GeoJSONGeometry(BaseModel):
+    """GeoJSON LineString geometry"""
+    type: str = "LineString"
+    coordinates: List[List[float]]  # [[lon, lat], ...]
+
+class GeoJSONProperties(BaseModel):
+    """GeoJSON properties"""
+    distance_km: float
+    avg_pollution_pm10: float
+    max_pollution_pm10: float
     calculation_time_ms: float
-    cached: bool = False
     sensor_types_used: List[str]
     nodes_evaluated: int
+    cached: bool
+
+class GeoJSONFeature(BaseModel):
+    """GeoJSON Feature"""
+    type: str = "Feature"
+    geometry: GeoJSONGeometry
+    properties: GeoJSONProperties
+
+class RouteResponse(BaseModel):
+    """Response with calculated route in GeoJSON format"""
+    route: GeoJSONFeature
+    waypoints: List[RouteNode]
 
 class HealthResponse(BaseModel):
     """Health check response"""

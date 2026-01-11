@@ -16,7 +16,7 @@ from pubsub.message_queue_googlepubsub.pubsub_client import PubSubClientPublishe
 from pubsub.authentification_service.auth import authorize
 
 import redis
-
+import httpx
 
 # Connect to Redis for caching query results
 redis_client = redis.Redis(
@@ -290,6 +290,63 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
         
     except HTTPException as e:
         logging.error(f"{str(e)}")
+        raise e
+    except Exception as e:
+        logging.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Endpoint route
+@app.post("/route/")
+async def calculate_route(payload: dict, x_auth_token: str = Header(None)):
+    """
+    Calculate pollution-aware route via Routing Service.
+    
+    Flow:
+    1. Client sends route request (start, goal, alpha, sensor_types)
+    2. Forward to Routing Service via HTTP
+    3. Routing Service calculates A* path
+    4. Returns GeoJSON route with statistics
+    
+    Args:
+        payload: Route parameters
+            - start: {lat, lon}
+            - goal: {lat, lon}
+            - alpha: 0.0-1.0 (0=fastest, 1=cleanest)
+            - sensor_types: ["fixed"], ["mobile"], or ["fixed", "mobile"]
+    
+    Returns:
+        GeoJSON route with waypoints and statistics
+    """
+    # await authorize(x_auth_token)
+    
+    try:
+        # Forward to Routing Service
+        routing_service_url = os.getenv('ROUTING_SERVICE_URL', 'http://routing-service:8003')
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{routing_service_url}/route",
+                json=payload
+            )
+        
+        if response.status_code == 200:
+            logging.info("Route calculated successfully")
+            return response.json()
+        else:
+            error_detail = response.text
+            logging.error(f"Routing Service error: {error_detail}")
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Routing Service error: {error_detail}"
+            )
+            
+    except httpx.TimeoutException:
+        logging.error("Routing Service timeout")
+        raise HTTPException(
+            status_code=504,
+            detail="Routing Service timeout"
+        )
+    except HTTPException as e:
         raise e
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")

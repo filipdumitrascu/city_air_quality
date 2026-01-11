@@ -4,7 +4,6 @@ import hashlib
 import logging
 from typing import Optional
 from .config import get_config
-from .models import RouteResponse
 
 logger = logging.getLogger(__name__)
 
@@ -19,23 +18,45 @@ class CacheManager:
                 port=self.config["redis_port"],
                 db=self.config["redis_db"],
                 decode_responses=True,
-                socket_connect_timeout=5
+                socket_connect_timeout=5,
+                socket_timeout=5
             )
             # Test connection
             self.redis_client.ping()
             self.connected = True
-            logger.info(f"Connected to Redis at {self.config['redis_host']}:{self.config['redis_port']}")
+            logger.info(f"Redis connected at {self.config['redis_host']}:{self.config['redis_port']}")
         except Exception as e:
             logger.warning(f"Redis connection failed: {e}. Caching disabled.")
             self.connected = False
     
     def generate_cache_key(self, start, goal, alpha, sensor_types) -> str:
-        """Generate cache key from request parameters"""
-        key_data = f"{start.lat},{start.lon}|{goal.lat},{goal.lon}|{alpha}|{sorted(sensor_types)}"
-        return f"route:{hashlib.md5(key_data.encode()).hexdigest()}"
+        """
+        Generate unique cache key from request parameters
+        
+        Args:
+            start: Start coordinate
+            goal: Goal coordinate
+            alpha: Pollution weight
+            sensor_types: List of sensor types
+        
+        Returns:
+            Cache key string (e.g., 'route:abc123')
+        """
+        # Round coordinates to 4 decimals for consistent caching
+        key_data = f"{start.lat:.4f},{start.lon:.4f}|{goal.lat:.4f},{goal.lon:.4f}|{alpha:.2f}|{sorted(sensor_types)}"
+        hash_hex = hashlib.md5(key_data.encode()).hexdigest()
+        return f"route:{hash_hex}"
     
     def get_cached_route(self, cache_key: str) -> Optional[dict]:
-        """Get cached route if exists"""
+        """
+        Get cached route if exists
+        
+        Args:
+            cache_key: Cache key
+        
+        Returns:
+            Cached route data or None
+        """
         if not self.connected:
             return None
         
@@ -51,7 +72,14 @@ class CacheManager:
             return None
     
     def cache_route(self, cache_key: str, route_data: dict, ttl: Optional[int] = None):
-        """Cache route response"""
+        """
+        Cache route response
+        
+        Args:
+            cache_key: Cache key
+            route_data: Route data to cache
+            ttl: Time to live in seconds (default from config)
+        """
         if not self.connected:
             return
         
@@ -68,4 +96,11 @@ class CacheManager:
     
     def is_connected(self) -> bool:
         """Check if Redis is connected"""
-        return self.connected
+        if not self.connected:
+            return False
+        
+        try:
+            self.redis_client.ping()
+            return True
+        except:
+            return False

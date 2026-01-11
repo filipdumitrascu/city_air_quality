@@ -25,6 +25,7 @@ class PollutionGraph:
         self.nodes: Set[Tuple[float, float]] = set()
         self.edges: Dict[Tuple[float, float], List[Tuple[float, float, float]]] = {}
         self.pollution_data: Dict[Tuple[float, float], float] = {}
+        self.sensor_types: Dict[Tuple[float, float], str] = {}  # Track sensor types
         self.grid_resolution = self.config["grid_resolution"]
     
     def add_pollution_data(self, pollution_readings: List[Dict]):
@@ -33,21 +34,27 @@ class PollutionGraph:
         
         Args:
             pollution_readings: List of readings from Database Service
+                               Schema: [sensor_id, timestamp, latitude, longitude, pm10, pm25, no2]
         """
         logger.info(f"Adding {len(pollution_readings)} pollution readings to graph")
         
         for reading in pollution_readings:
             try:
-                lat = float(reading.get("latitude") or reading.get("Latitude"))
-                lon = float(reading.get("longitude") or reading.get("Longitude"))
-                
-                # Get pollution value (PM10 as primary metric)
-                pollution = float(
-                    reading.get("pm10") or 
-                    reading.get("PM10") or 
-                    reading.get("PM1_0") or 
-                    0
-                )
+                # QuestDB returns arrays: [sensor_id, timestamp, lat, lon, pm10, ...]
+                if isinstance(reading, (list, tuple)):
+                    sensor_id = reading[0]
+                    lat = float(reading[2])
+                    lon = float(reading[3])
+                    pollution = float(reading[4]) if len(reading) > 4 else 50.0  # pm10
+                    
+                    # Determine sensor type from sensor_id prefix
+                    sensor_type = "mobile" if sensor_id.startswith("M") else "fixed"
+                else:
+                    # Fallback for dict format
+                    lat = float(reading.get("latitude", 0))
+                    lon = float(reading.get("longitude", 0))
+                    pollution = float(reading.get("pm10", 50.0))
+                    sensor_type = reading.get("sensor_type", "unknown")
                 
                 # Snap to grid
                 grid_lat = round(lat / self.grid_resolution) * self.grid_resolution
@@ -62,6 +69,7 @@ class PollutionGraph:
                     ) / 2
                 else:
                     self.pollution_data[grid_point] = pollution
+                    self.sensor_types[grid_point] = sensor_type
                 
                 self.nodes.add(grid_point)
                 
@@ -97,7 +105,7 @@ class PollutionGraph:
                 # Only connect if within reasonable distance
                 if distance <= self.grid_resolution * 111 * 1.5:  # ~1.5 grid cells
                     # Get pollution at destination
-                    pollution = self.pollution_data.get(other, 50.0)  # Default 50 if unknown
+                    pollution = self.pollution_data.get(other, 50.0)
                     normalized_pollution = (pollution - min_pollution) / pollution_range
                     
                     # Weight = distance * (1 + alpha * pollution)
@@ -113,7 +121,6 @@ class PollutionGraph:
     def get_nearest_node(self, lat: float, lon: float) -> Tuple[float, float]:
         """Find nearest node in graph to given coordinate"""
         if not self.nodes:
-            # Return snapped grid point if no nodes exist yet
             return (
                 round(lat / self.grid_resolution) * self.grid_resolution,
                 round(lon / self.grid_resolution) * self.grid_resolution
@@ -135,16 +142,7 @@ class PollutionGraph:
     
     @staticmethod
     def _haversine_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
-        """
-        Calculate distance between two coordinates in km using Haversine formula
-        
-        Args:
-            coord1: (lat, lon) tuple
-            coord2: (lat, lon) tuple
-        
-        Returns:
-            Distance in kilometers
-        """
+        """Calculate distance in km using Haversine formula"""
         lat1, lon1 = coord1
         lat2, lon2 = coord2
         

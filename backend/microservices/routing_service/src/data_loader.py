@@ -29,18 +29,18 @@ class PollutionDataLoader:
             sensor_types: List of sensor types to include ['fixed', 'mobile']
         
         Returns:
-            List of pollution readings
+            List of pollution readings (arrays from QuestDB)
         """
         try:
-            # Build query parameters
+            # Build query parameters - LOWERCASE columns for QuestDB
             params = {
                 "latitude": lat,
                 "longitude": lon,
                 "radius": radius_km,
-                "layers": ["PM10", "PM2.5", "NO2"]
+                "layers": ["pm10", "pm25", "no2"]  # lowercase!
             }
             
-            logger.info(f"Fetching pollution data: lat={lat}, lon={lon}, radius={radius_km}")
+            logger.info(f"Fetching pollution data: lat={lat}, lon={lon}, radius={radius_km}km")
             
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
@@ -51,11 +51,17 @@ class PollutionDataLoader:
                 data = response.json()
             
             # Filter by sensor type if specified
+            # QuestDB returns arrays: [sensor_id, timestamp, lat, lon, pm10, ...]
             if sensor_types:
-                filtered_data = [
-                    reading for reading in data
-                    if reading.get("sensor_type") in sensor_types
-                ]
+                filtered_data = []
+                for reading in data:
+                    sensor_id = reading[0] if isinstance(reading, (list, tuple)) else reading.get("sensor_id", "")
+                    
+                    # Determine type from sensor_id prefix
+                    if ("fixed" in sensor_types and sensor_id.startswith("F")) or \
+                       ("mobile" in sensor_types and sensor_id.startswith("M")):
+                        filtered_data.append(reading)
+                
                 logger.info(f"Filtered {len(data)} → {len(filtered_data)} readings by sensor_types={sensor_types}")
                 return filtered_data
             
@@ -77,25 +83,14 @@ class PollutionDataLoader:
         lon_max: float,
         sensor_types: Optional[List[str]] = None
     ) -> List[Dict]:
-        """
-        Fetch pollution data for entire area
-        
-        Args:
-            lat_min, lat_max, lon_min, lon_max: Bounding box
-            sensor_types: Sensor types to include
-        
-        Returns:
-            List of all pollution readings in area
-        """
-        # Calculate center and radius to cover entire area
+        """Fetch pollution data for entire area"""
         center_lat = (lat_min + lat_max) / 2
         center_lon = (lon_min + lon_max) / 2
         
-        # Approximate radius to cover corners (in km)
-        # Using simple lat/lon → km conversion (~111km per degree)
+        # Calculate radius to cover entire area
         lat_diff = (lat_max - lat_min) * 111
-        lon_diff = (lon_max - lon_min) * 111 * 0.7  # cos(44°) ≈ 0.7 for Bucharest
-        radius_km = max(lat_diff, lon_diff) / 2 + 2  # +2km buffer
+        lon_diff = (lon_max - lon_min) * 111 * 0.7
+        radius_km = max(lat_diff, lon_diff) / 2 + 2
         
         return await self.fetch_pollution_data(
             center_lat,

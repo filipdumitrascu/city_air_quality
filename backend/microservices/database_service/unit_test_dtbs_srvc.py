@@ -28,20 +28,15 @@ from db import insert_data, fetch_data
 # Test Data
 valid_payload = {
     "clientId": "clientId-a12b34cd5678ef90",
-    "timestamp": "2024-06-17T06:06:00+02:00",
+    "timestamp": "2023-12-10T12:34:56.789Z",
     "location": {
         "latitude": 45.764043,
-        "longitude": 4.835659
+        "longitude": 25.123456
     },
     "data": [
-        {"dimension": "Temperature", "value": 30.5},
-        {"dimension": "Humidity", "value": 55.2},
-        {"dimension": "Pressure", "value": 1012.3},
-        {"dimension": "Altitude", "value": 120.4},
-        {"dimension": "CO2", "value": 600},
-        {"dimension": "PM1.0", "value": 10.1},
-        {"dimension": "PM2.5", "value": 15.3},
-        {"dimension": "PM10", "value": 18.2}
+        {"dimension": "PM10", "value": 45.3},
+        {"dimension": "PM2.5", "value": 25.2},
+        {"dimension": "NO2", "value": 30.5}
     ]
 }
 
@@ -60,10 +55,13 @@ async def test_add_data_success(mock_insert):
     mock_insert.assert_called_once()
     
     # Verify correct parameters passed to insert_data
+    # Schema: sensor_id, timestamp, latitude, longitude, pm10, pm25, no2
     call_args = mock_insert.call_args[0][0]
-    assert call_args[0] == "clientId-a12b34cd5678ef90"  # clientId
+    assert call_args[0] == "clientId-a12b34cd5678ef90"  # sensor_id
     assert call_args[2] == 45.764043  # latitude
-    assert call_args[4] == 30.5  # Temperature
+    assert call_args[4] == 45.3  # pm10
+    assert call_args[5] == 25.2  # pm25
+    assert call_args[6] == 30.5  # no2
 
 
 @pytest.mark.asyncio

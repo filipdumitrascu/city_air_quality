@@ -73,6 +73,7 @@ async def process_message(message):
 ingest_subscriber = PubSubClientSubscriber(subscription_name, process_message)
 
 
+# Fast API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """

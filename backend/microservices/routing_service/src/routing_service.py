@@ -1,11 +1,13 @@
-# routing_service/src/routing_service.py
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 import logging
 import time
 import os
 
-from .models import RouteRequest, RouteResponse, RouteNode, HealthResponse
+from .models import (
+    RouteRequest, RouteResponse, RouteNode, HealthResponse,
+    GeoJSONFeature, GeoJSONGeometry, GeoJSONProperties
+)
 from .config import get_config
 from .data_loader import PollutionDataLoader
 from .graph_builder import PollutionGraph
@@ -13,10 +15,11 @@ from .pathfinding import AStarPathfinder
 from .cache_manager import CacheManager
 from .utils import calculate_route_stats
 
-# Setup logging
+
 log_dir = os.path.join(os.path.dirname(__file__), "../logs")
 os.makedirs(log_dir, exist_ok=True)
 
+# Configure file-based logging for Routing Service
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -28,13 +31,14 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Global instances
+
 cache_manager = None
 data_loader = None
 
+# Fast API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize on startup"""
+    """Initialize components on startup"""
     global cache_manager, data_loader
     
     logger.info("Starting Routing Service...")
@@ -55,6 +59,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+# Health check endpoints
 @app.get("/", tags=["health"])
 async def root():
     """Root endpoint"""
@@ -72,7 +78,6 @@ async def health_check():
     # Test database connection
     db_ok = False
     try:
-        # Quick ping to database service
         await data_loader.fetch_pollution_data(44.43, 26.10, 1.0, ["fixed"])
         db_ok = True
     except:
@@ -85,25 +90,42 @@ async def health_check():
         database_connected=db_ok
     )
 
+
+# Endpoint route
 @app.post("/route", response_model=RouteResponse, tags=["routing"])
 async def calculate_route(request: RouteRequest):
     """
     Calculate pollution-aware route from start to goal
     
-    Parameters:
-    - **start**: Starting coordinate
-    - **goal**: Destination coordinate  
-    - **alpha**: Pollution weight (0.0 = fastest, 1.0 = cleanest)
-    - **sensor_types**: Which sensors to use (["fixed"], ["mobile"], or ["fixed", "mobile"])
+    **Parameters:**
+    - **start**: Starting coordinate (lat, lon)
+    - **goal**: Destination coordinate (lat, lon)
+    - **alpha**: Pollution weight (0.0 = fastest route, 1.0 = cleanest route)
+    - **sensor_types**: Sensor types to use:
+        - `["fixed"]` - Only fixed sensors
+        - `["mobile"]` - Only mobile sensors
+        - `["fixed", "mobile"]` - All sensors
     
-    Returns optimal route with statistics
+    **Returns:**
+    - GeoJSON route with statistics
+    - List of waypoints with pollution levels
+    
+    **Example:**
+```json
+    {
+      "start": {"lat": 44.4268, "lon": 26.1025},
+      "goal": {"lat": 44.4350, "lon": 26.1100},
+      "alpha": 0.7,
+      "sensor_types": ["fixed", "mobile"]
+    }
+```
     """
     start_time = time.time()
     
     try:
         logger.info(f"Route request: {request.start} → {request.goal}, alpha={request.alpha}, sensors={request.sensor_types}")
         
-        # Check cache first
+        # Redis cache check
         cache_key = cache_manager.generate_cache_key(
             request.start,
             request.goal,
@@ -113,9 +135,10 @@ async def calculate_route(request: RouteRequest):
         
         cached_route = cache_manager.get_cached_route(cache_key)
         if cached_route:
-            cached_route["cached"] = True
-            cached_route["calculation_time_ms"] = round((time.time() - start_time) * 1000, 2)
-            logger.info(f"Returning cached route (took {cached_route['calculation_time_ms']}ms)")
+            calculation_time = round((time.time() - start_time) * 1000, 2)
+            cached_route["route"]["properties"]["calculation_time_ms"] = calculation_time
+            cached_route["route"]["properties"]["cached"] = True
+            logger.info(f"Cache HIT: Returning cached route ({calculation_time}ms)")
             return RouteResponse(**cached_route)
         
         # Fetch pollution data
@@ -158,9 +181,14 @@ async def calculate_route(request: RouteRequest):
         
         # Calculate stats
         stats = calculate_route_stats(path, graph.pollution_data)
+        calculation_time = round((time.time() - start_time) * 1000, 2)
         
-        # Build response
-        route_nodes = [
+        # Build GeoJSON response
+        # GeoJSON coordinates are [lon, lat] (NOT [lat, lon]!)
+        geojson_coords = [[node[1], node[0]] for node in path]
+        
+        # Waypoints with pollution
+        waypoints = [
             RouteNode(
                 lat=node[0],
                 lon=node[1],
@@ -169,17 +197,27 @@ async def calculate_route(request: RouteRequest):
             for node in path
         ]
         
-        calculation_time = round((time.time() - start_time) * 1000, 2)
+        # Build GeoJSON Feature
+        geojson_feature = GeoJSONFeature(
+            type="Feature",
+            geometry=GeoJSONGeometry(
+                type="LineString",
+                coordinates=geojson_coords
+            ),
+            properties=GeoJSONProperties(
+                distance_km=stats["total_distance_km"],
+                avg_pollution_pm10=stats["avg_pollution"],
+                max_pollution_pm10=stats["max_pollution"],
+                calculation_time_ms=calculation_time,
+                sensor_types_used=request.sensor_types,
+                nodes_evaluated=pathfinder.nodes_evaluated,
+                cached=False
+            )
+        )
         
         response_data = {
-            "route": route_nodes,
-            "total_distance_km": stats["total_distance_km"],
-            "avg_pollution": stats["avg_pollution"],
-            "max_pollution": stats["max_pollution"],
-            "calculation_time_ms": calculation_time,
-            "cached": False,
-            "sensor_types_used": request.sensor_types,
-            "nodes_evaluated": pathfinder.nodes_evaluated
+            "route": geojson_feature.model_dump(),  # ← FIX
+            "waypoints": [w.model_dump() for w in waypoints]  # ← FIX
         }
         
         # Cache result
@@ -195,19 +233,50 @@ async def calculate_route(request: RouteRequest):
         logger.error(f"Error calculating route: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
+
+# Cache management endpoints
 @app.get("/cache/stats", tags=["cache"])
 async def cache_stats():
-    """Get cache statistics"""
-    if not cache_manager.is_connected():
-        return {"error": "Redis not connected"}
+    """Get Redis cache statistics"""
+    if not cache_manager or not cache_manager.is_connected():
+        return {"connected": False, "error": "Redis not connected"}
     
     try:
         info = cache_manager.redis_client.info("stats")
+        keyspace = cache_manager.redis_client.info("keyspace")
+        memory = cache_manager.redis_client.info("memory")
+        
+        # Count only route:* keys
+        route_keys = len(cache_manager.redis_client.keys("route:*"))
+        
         return {
-            "total_commands_processed": info.get("total_commands_processed", 0),
-            "keyspace_hits": info.get("keyspace_hits", 0),
-            "keyspace_misses": info.get("keyspace_misses", 0),
-            "connected_clients": info.get("connected_clients", 0)
+            "connected": True,
+            "total_commands": info.get("total_commands_processed", 0),
+            "hits": info.get("keyspace_hits", 0),
+            "misses": info.get("keyspace_misses", 0),
+            "hit_rate_percent": round(
+                (info.get("keyspace_hits", 0) / max(info.get("total_commands_processed", 1), 1)) * 100,
+                2
+            ),
+            "cached_routes": route_keys,
+            "memory_used_mb": round(memory.get("used_memory", 0) / 1024 / 1024, 2)
         }
     except Exception as e:
-        return {"error": str(e)}
+        return {"connected": False, "error": str(e)}
+
+@app.delete("/cache/clear", tags=["cache"])
+async def clear_cache():
+    """Clear all cached routes"""
+    if not cache_manager or not cache_manager.is_connected():
+        raise HTTPException(status_code=503, detail="Redis not connected")
+    
+    try:
+        keys = cache_manager.redis_client.keys("route:*")
+        if keys:
+            cache_manager.redis_client.delete(*keys)
+            logger.info(f" Cleared {len(keys)} cached routes")
+            return {"cleared": len(keys), "message": f"Cleared {len(keys)} cached routes"}
+        return {"cleared": 0, "message": "No cached routes to clear"}
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")

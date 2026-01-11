@@ -1,0 +1,3 @@
+2026-01-11 22:27:58,373 - src.routing_service - INFO - Starting Routing Service...
+2026-01-11 22:27:58,376 - src.cache_manager - INFO - Redis connected at redis:6379
+2026-01-11 22:27:58,377 - src.routing_service - INFO - Routing Service ready
