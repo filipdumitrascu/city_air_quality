@@ -74,8 +74,6 @@ Build and push Docker images to Google Artifact Registry:
 
 ## Documentation
 
-See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed deployment instructions.
-
 ## Architecture
 
 - **Microservices**: FastAPI-based services for data ingestion, processing, and routing
