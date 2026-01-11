@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from queue import Queue
 from fastapi import Request
 from prometheus_fastapi_instrumentator import Instrumentator
+from contextlib import asynccontextmanager
 
 from pubsub.message_queue_googlepubsub.pubsub_client import PubSubClientPublisher, PubSubClientSubscriber
 from pubsub.authentification_service.auth import authorize
@@ -84,6 +85,9 @@ async def lifespan(app: FastAPI):
     logging.info("Subscriber started and listening for messages on 'results_response_messages-sub'.")
     
     yield  # App runs here
+    
+    # Shutdown
+    logging.info("Shutting down...")
 
 app = FastAPI(
     title="Client Message Handler API",
