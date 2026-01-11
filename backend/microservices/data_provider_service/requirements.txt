@@ -6,6 +6,7 @@ google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.1
 uvicorn==0.34.0
 httpx==0.25.2
+redis==5.0.1
 
 # Testing dependencies
 pytest==7.4.4

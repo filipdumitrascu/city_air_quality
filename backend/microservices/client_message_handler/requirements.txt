@@ -8,7 +8,7 @@ python-dotenv==1.0.1
 requests==2.32.3
 requests-oauthlib==2.0.0
 uvicorn==0.34.0
-prometheus_fastapi_instrumentator
+prometheus-fastapi-instrumentator==7.0.0
 redis==5.0.1
 
 # Testing dependencies
