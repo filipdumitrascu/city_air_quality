@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
     
     yield  # App runs here
     
-    # Shutdown (cleanup if needed)
+    # Shutdown
     logging.info("Shutting down Data Provider Service...")
 
 

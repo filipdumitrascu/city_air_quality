@@ -77,6 +77,7 @@ async def process_results_message(message):
 # This listens for responses from Data Provider Service
 results_subscriber = PubSubClientSubscriber("results_response_messages-sub", process_results_message)
 
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Lifespan context manager for FastAPI app.
