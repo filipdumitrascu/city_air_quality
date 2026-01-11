@@ -14,8 +14,14 @@ logging.basicConfig(
 
 db_pool = None
 
+# Database Connection Pool
 def init_db():
-    """Inițializează pool-ul de conexiuni la baza de date."""
+    """
+    Initialize PostgreSQL connection pool for QuestDB.
+    
+    Uses SimpleConnectionPool with 1-10 connections.
+    Config loaded from DATABASE_URL environment variable.
+    """
     global db_pool
     try:
         db_config = get_db_config()
@@ -31,16 +37,15 @@ def init_db():
         logging.error(f"Error initializing database connection pool: {str(e)}")
         raise RuntimeError("Database connection failed")
 
-
 def close_db():
-    """Închide toate conexiunile din pool la shutdown."""
+    """Close all pool connections when shutdown"""
     global db_pool
     if db_pool:
         db_pool.closeall()
         logging.info("Database connection pool closed")
 
 def get_db_connection():
-    """Obține o conexiune din pool."""
+    """Gets a pool connection."""
     global db_pool
     if not db_pool:
         init_db()
@@ -53,16 +58,18 @@ def get_db_connection():
         raise RuntimeError("Database connection error")
 
 def release_db_connection(conn):
-    """Eliberează conexiunea înapoi în pool."""
+    """Release pool connection."""
     global db_pool
     if db_pool and conn:
         db_pool.putconn(conn)
 
+
+# Actions
 def insert_data(params=None):
-    """Execută un INSERT în baza de date folosind o conexiune din pool."""
+    """Executs an INSERT in database using a pool connection."""
     conn = None
     try:
-        query = """INSERT INTO pollution_data 
+        query = """INSERT INTO sensor_readings 
             (Client, Timestamp, Latitude, Longitude, Temperature, Humidity, Pressure, Altitude, CO2, PM1_0, PM2_5, PM10)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
         conn = get_db_connection()
@@ -80,29 +87,8 @@ def insert_data(params=None):
         if conn:
             release_db_connection(conn)
 
-def get_coordinate_deltas(radius_km: float, latitude: float):
-    """
-    Calculează delta-urile de latitudine și longitudine pentru un radius dat.
-    
-    Args:
-        radius_km: Raza în kilometri
-        latitude: Latitudinea centrului
-    
-    Returns:
-        (delta_lat, delta_lon): Diferențele de coordonate
-    """
-    
-    # 1 grad latitudine ≈ 111 km
-    delta_lat = radius_km / 111.0
-    
-    # 1 grad longitudine depinde de latitudine
-    # la latitudine λ: 1° lon ≈ 111 * cos(λ) km
-    delta_lon = radius_km / (111.0 * math.cos(math.radians(latitude)))
-    
-    return delta_lat, delta_lon
-
 def fetch_data(params=None):
-    """Execută un SELECT în baza de date folosind o conexiune din pool."""
+    """Executs a SELECT in database using a pool connection."""
     conn = None
     try:
         conn = get_db_connection()
