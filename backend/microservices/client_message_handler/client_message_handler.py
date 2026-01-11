@@ -137,6 +137,19 @@ app = FastAPI(
 )
 
 
+# Health check endpoints
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {"service": "client_message_handler", "status": "running"}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "service": "client_message_handler"}
+
+
+
 # Prometheus metrics for monitoring
 Instrumentator().instrument(app).expose(app)
 
@@ -261,11 +274,8 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
         # Parse successful response
         response_data = json.loads(response_data)
         
-        # ═══════════════════════════════════════════════════════════
-        # CACHE RESULT
-        # ═══════════════════════════════════════════════════════════
+        # Cache result
         try:
-            # Cache for 3 minutes (180 seconds) - shorter TTL than DB layer
             redis_client.setex(
                 cache_key,
                 180,  # TTL in seconds
