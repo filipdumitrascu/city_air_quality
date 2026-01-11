@@ -66,12 +66,12 @@ def release_db_connection(conn):
 
 # Actions
 def insert_data(params=None):
-    """Executs an INSERT in database using a pool connection."""
+    """Execute INSERT in database using pool connection."""
     conn = None
     try:
         query = """INSERT INTO sensor_readings 
-            (Client, Timestamp, Latitude, Longitude, Temperature, Humidity, Pressure, Altitude, CO2, PM1_0, PM2_5, PM10)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+            (sensor_id, timestamp, latitude, longitude, pm10, pm25, no2)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)"""
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -88,29 +88,32 @@ def insert_data(params=None):
             release_db_connection(conn)
 
 def fetch_data(params=None):
-    """Executs a SELECT in database using a pool connection."""
+    """Execute SELECT in database using pool connection."""
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        # Build column list - lowercase to match your schema
+        columns = ', '.join([f'"{col}"' for col in params[0]])
+
         query = f"""
-             SELECT "Client", 
-                "Timestamp", 
-                "Latitude",
-                "Longitude",
-                {', '.join(params[0])}
+             SELECT sensor_id, 
+                timestamp, 
+                latitude,
+                longitude,
+                {columns}
                 FROM (
                     SELECT *
                     FROM (
-                        SELECT *, ROUND("Latitude", 4) AS lat4, ROUND("Longitude", 4) AS lng4
+                        SELECT *, ROUND(latitude, 4) AS lat4, ROUND(longitude, 4) AS lng4
                         FROM sensor_readings
                     )
-                    LATEST ON "Timestamp" PARTITION BY lat4, lng4
+                    LATEST ON timestamp PARTITION BY lat4, lng4
                 )
                 WHERE ABS(lat4 - round(CAST(%s AS DOUBLE), 4)) <= round(CAST(%s AS DOUBLE), 4)
                 AND ABS(lng4 - round(CAST(%s AS DOUBLE), 4)) <= round(CAST(%s AS DOUBLE), 4)
-                ORDER BY "Timestamp" DESC
+                ORDER BY timestamp DESC
         """
         cursor.execute(query, params[1:])
         results = cursor.fetchall()

@@ -145,55 +145,32 @@ async def health_check():
 # Endpoint (data insertion)
 @app.post("/add_data/")
 async def add_data(payload: InsertPollutionDataRequest):
-    """
-    Insert pollution data into QuestDB.
-    
-    Transforms payload from Client Message Handler format to database format:
-    - Extracts pollution dimensions (Temperature, PM10, etc.)
-    - Maps to database columns
-    - Inserts via connection pool
-    
-    Args:
-        payload: Sensor data with clientId, timestamp, location, measurements
-    
-    Returns:
-        {"success": True} on successful insertion
-        
-    Raises:
-        400: Invalid data or database insertion error
-    """
     try:
-        # Initialize pollution data dictionary with all possible dimensions
+        # Initialize pollution data dictionary
         pollution_data = {
-            "Temperature": None,
-            "Humidity": None,
-            "Pressure": None,
-            "Altitude": None,
-            "CO2": None,
-            "PM1.0": None,
+            "PM10": None,
             "PM2.5": None,
-            "PM10": None
+            "NO2": None
         }
 
         # Map payload data to pollution_data dictionary
         for entry in payload.data:
-            if entry.dimension in pollution_data:
-                pollution_data[entry.dimension] = entry.value
+            dimension = entry.dimension
+            if dimension == "PM2_5":
+                pollution_data["PM2.5"] = entry.value
+            elif dimension in pollution_data:
+                pollution_data[dimension] = entry.value
 
         # Prepare parameters for database insertion
+        # Schema: sensor_id, timestamp, latitude, longitude, pm10, pm25, no2
         params = (
-            payload.clientId,
-            payload.timestamp,
-            payload.location.latitude,
-            payload.location.longitude,
-            pollution_data["Temperature"],
-            pollution_data["Humidity"],
-            pollution_data["Pressure"],
-            pollution_data["Altitude"],
-            pollution_data["CO2"],
-            pollution_data["PM1.0"],
-            pollution_data["PM2.5"],
-            pollution_data["PM10"]
+            payload.clientId,           # sensor_id
+            payload.timestamp,          # timestamp
+            payload.location.latitude,  # latitude
+            payload.location.longitude, # longitude
+            pollution_data["PM10"],     # pm10
+            pollution_data["PM2.5"],    # pm25
+            pollution_data["NO2"]       # no2
         )
 
         # Execute INSERT query
@@ -203,7 +180,6 @@ async def add_data(payload: InsertPollutionDataRequest):
     except Exception as e:
         logging.error(f"Error adding data {str(e)}")
         raise HTTPException(status_code=400, detail=f"Error adding data: {str(e)}")
-
 
 # Endpoint (data retrieval) with redis caching
 @app.get("/get_data/")
