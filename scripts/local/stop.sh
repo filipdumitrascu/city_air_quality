@@ -18,6 +18,30 @@ echo ""
 echo " Containers and volumes removed"
 echo ""
 
+
+# Cleaning logs
+echo "Cleaning service logs..."
+
+# List of microservices with logs
+SERVICES=(
+    "microservices/client_message_handler/logs"
+    "microservices/data_provider_service/logs"
+    "microservices/database_service/logs"
+    "microservices/ingest_service/logs"
+    "microservices/routing_service/logs"
+)
+
+CLEANED=0
+for service_log in "${SERVICES[@]}"; do
+    if [ -d "$service_log" ]; then
+        find "$service_log" -name "*.log" -type f -exec truncate -s 0 {} \; 2>/dev/null && CLEANED=$((CLEANED + 1))
+    fi
+done
+
+echo "Cleaned logs in $CLEANED services"
+echo ""
+
+
 # Ask about images
 echo "Do you want to remove built images too?"
 echo "This will force rebuild on next start (slower)"

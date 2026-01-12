@@ -31,7 +31,7 @@ if not os.path.exists(log_file):
     open(log_file, 'w').close()
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     filename=log_file,
     filemode='w',
     format='%(asctime)s - %(levelname)s - %(message)s'

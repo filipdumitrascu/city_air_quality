@@ -19,10 +19,9 @@ from .utils import calculate_route_stats
 log_dir = os.path.join(os.path.dirname(__file__), "../logs")
 os.makedirs(log_dir, exist_ok=True)
 
-# Configure file-based logging for Routing Service
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(os.path.join(log_dir, 'routing_service.log'), mode='w')
     ]

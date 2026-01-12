@@ -29,7 +29,7 @@ redis_client = redis.Redis(
 )
 
 
-# Create logs directory and configure file-based logging
+# Configure file-based logging for Client message handler
 log_dir = os.path.join(os.path.dirname(__file__), "logs")
 os.makedirs(log_dir, exist_ok=True)
 
@@ -38,7 +38,7 @@ if not os.path.exists(log_file):
     open(log_file, 'w').close()
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     filename=log_file,
     filemode='w',
     format='%(asctime)s - %(levelname)s - %(message)s'

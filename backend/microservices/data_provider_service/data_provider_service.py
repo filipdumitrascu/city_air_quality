@@ -22,7 +22,7 @@ redis_client = redis.Redis(
 
 # Configure file-based logging for Data Provider Service
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     filename=os.path.join('logs', 'data_provider_service.log'),
     filemode='w',
     format='%(asctime)s - %(levelname)s - %(message)s'

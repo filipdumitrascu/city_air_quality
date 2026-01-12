@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 # Configure file-based logging for Ingest Service
 logging.basicConfig(
-    level=logging.DEBUG, 
+    level=logging.INFO, 
     filename=os.path.join('logs', 'ingest_service.log'),
     filemode='w', 
     format='%(asctime)s - %(levelname)s - %(message)s'
