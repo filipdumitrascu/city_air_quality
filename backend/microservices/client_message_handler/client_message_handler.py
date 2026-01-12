@@ -304,24 +304,16 @@ async def calculate_route(payload: dict, x_auth_token: str = Header(None)):
     Flow:
     1. Client sends route request (start, goal, alpha, sensor_types)
     2. Forward to Routing Service via HTTP
-    3. Routing Service calculates A* path
+    3. Routing Service calculates A* path with Redis caching
     4. Returns GeoJSON route with statistics
-    
-    Args:
-        payload: Route parameters
-            - start: {lat, lon}
-            - goal: {lat, lon}
-            - alpha: 0.0-1.0 (0=fastest, 1=cleanest)
-            - sensor_types: ["fixed"], ["mobile"], or ["fixed", "mobile"]
-    
-    Returns:
-        GeoJSON route with waypoints and statistics
     """
     # await authorize(x_auth_token)
     
     try:
         # Forward to Routing Service
-        routing_service_url = os.getenv('ROUTING_SERVICE_URL', 'http://routing-service:8003')
+        routing_service_url = os.getenv('ROUTING_SERVICE_URL', 'http://routing-service:8000')
+        
+        logging.info(f"Forwarding route request to {routing_service_url}")
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -350,7 +342,7 @@ async def calculate_route(payload: dict, x_auth_token: str = Header(None)):
         raise e
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 # Cache management endpoints (for debugging/monitoring)
