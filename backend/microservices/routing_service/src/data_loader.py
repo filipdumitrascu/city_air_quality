@@ -32,12 +32,12 @@ class PollutionDataLoader:
             List of pollution readings (arrays from QuestDB)
         """
         try:
-            # Build query parameters - LOWERCASE columns for QuestDB
+            # Build query parameters
             params = {
                 "latitude": lat,
                 "longitude": lon,
                 "radius": radius_km,
-                "layers": ["pm10", "pm25", "no2"]  # lowercase!
+                "layers": ["pm10", "pm25", "no2"]
             }
             
             logger.info(f"Fetching pollution data: lat={lat}, lon={lon}, radius={radius_km}km")
