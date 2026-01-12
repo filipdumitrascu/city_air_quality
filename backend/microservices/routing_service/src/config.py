@@ -14,7 +14,7 @@ def get_config() -> Dict:
         "database_service_url": os.getenv("DATABASE_SERVICE_URL", "http://database-service:8000"),
         
         # Routing parameters
-        "grid_resolution": float(os.getenv("GRID_RESOLUTION", 0.01)),  # ~1km in lat/lon
+        "grid_resolution": float(os.getenv("GRID_RESOLUTION", 0.005)),  # ~1km in lat/lon
         "pollution_weight_multiplier": float(os.getenv("POLLUTION_WEIGHT", 10.0)),
         
         # Bucharest bounds (for grid generation)
