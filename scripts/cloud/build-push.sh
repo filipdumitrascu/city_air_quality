@@ -20,7 +20,7 @@ else
     docker buildx use multiarch-builder
 fi
 
-cd backend
+cd ../../backend
 
 # Build and push
 echo "Building and pushing all images..."

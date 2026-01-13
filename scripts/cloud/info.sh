@@ -6,7 +6,6 @@
 set -e
 
 echo "CityAirQ Kubernetes Status"
-echo "=========================="
 
 echo ""
 echo "Pods:"

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: routing-service
-        image: gcr.io/cityairq-pollution-project/routing-service:latest
+        image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-routing_service:latest
         ports:
         - containerPort: 8000
           name: http
@@ -47,8 +47,6 @@ spec:
             port: 8000
           initialDelaySeconds: 10
           periodSeconds: 5
-      imagePullSecrets:
-      - name: gcr-secret
 ---
 apiVersion: v1
 kind: Service

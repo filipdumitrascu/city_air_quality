@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: data-provider-service
-          image: gcr.io/cityairq-pollution-project/cityairq-data_provider_service:latest
+          image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-data_provider_service:latest
           ports:
             - containerPort: 8001
           env:
