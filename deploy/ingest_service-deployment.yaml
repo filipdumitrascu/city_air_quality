@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ingest-service
+  namespace: default
 spec:
   replicas: 1
   selector:
@@ -13,32 +14,41 @@ spec:
         app: ingest-service
     spec:
       containers:
-        - name: ingest-service
-          image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-ingest_service:latest
-          ports:
-            - containerPort: 8002
-          env:
-          - name: GOOGLE_APPLICATION_CREDENTIALS
-            value: /app/credentials.json
-          volumeMounts:
-          - name: credentials-volume
-            mountPath: /app/credentials.json
-            subPath: credentials.json
+      - name: ingest-service
+        image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-ingest_service:latest
+        ports:
+        - containerPort: 8002
+        env:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /app/credentials.json
+        - name: DATABASE_SERVICE_URL
+          value: "http://database-service:8000"
+        volumeMounts:
+        - name: credentials-volume
+          mountPath: /app/credentials.json
+          subPath: credentials.json
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
       volumes:
       - name: credentials-volume
         secret:
           secretName: credentials-secret
-
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: ingest-service
+  namespace: default
 spec:
   selector:
     app: ingest-service
   ports:
-    - protocol: TCP
-      port: 8002
-      targetPort: 8002
+  - port: 8002
+    targetPort: 8002
+    protocol: TCP
   type: ClusterIP

@@ -8,7 +8,7 @@ set -e
 # Configuration
 PROJECT_ID="elite-totem-484208-e2"
 CLUSTER_NAME="cityairq-standard"
-REGION="us-central1"
+REGION="us-central1-a"
 SERVICE_ACCOUNT_KEY="../../deploy/credentials.json"
 
 echo "Setting up Kubernetes access..."
