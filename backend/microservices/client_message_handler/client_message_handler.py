@@ -12,8 +12,8 @@ from fastapi import Request
 from prometheus_fastapi_instrumentator import Instrumentator
 from contextlib import asynccontextmanager
 
-from pubsub.message_queue_googlepubsub.pubsub_client import PubSubClientPublisher, PubSubClientSubscriber
-from pubsub.authentification_service.auth import authorize
+from common.message_queue_googlepubsub.pubsub_client import PubSubClientPublisher, PubSubClientSubscriber
+from common.authentification_service.auth import authorize
 
 import redis
 import httpx

@@ -39,7 +39,7 @@ except Exception as e:
 
 # Import dependencies
 from database_service.client.database_service_client import get_data_from_database
-from pubsub.message_queue_googlepubsub.pubsub_client import PubSubClientSubscriber, PubSubClientPublisher
+from common.message_queue_googlepubsub.pubsub_client import PubSubClientSubscriber, PubSubClientPublisher
 
 
 def generate_cache_key(query_params: dict) -> str:

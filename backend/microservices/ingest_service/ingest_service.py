@@ -18,7 +18,7 @@ logging.basicConfig(
 
 # Import dependencies
 from database_service.client.database_service_client import send_data_to_database
-from pubsub.message_queue_googlepubsub.pubsub_client import PubSubClientSubscriber
+from common.message_queue_googlepubsub.pubsub_client import PubSubClientSubscriber
 
 
 # Subscribe to sensor data messages from Client Message Handler

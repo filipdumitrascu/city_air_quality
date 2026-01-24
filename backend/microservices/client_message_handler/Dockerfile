@@ -4,12 +4,12 @@ WORKDIR /app
 
 # Copy files
 COPY microservices/client_message_handler /app
-COPY pubsub /app/pubsub
+COPY common /app/common
 
-# Create __init__.py for pubsub module
-RUN touch /app/pubsub/__init__.py && \
-    touch /app/pubsub/authentification_service/__init__.py && \
-    touch /app/pubsub/message_queue_googlepubsub/__init__.py
+# Create __init__.py for common module
+RUN touch /app/common/__init__.py && \
+    touch /app/common/authentification_service/__init__.py && \
+    touch /app/common/message_queue_googlepubsub/__init__.py
 
 # Install dependencies
 RUN pip install --no-cache-dir -r /app/requirements.txt
