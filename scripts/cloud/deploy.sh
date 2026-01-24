@@ -17,9 +17,20 @@ cd ../../deploy
 
 # Create secrets if not exists
 echo "Creating secrets..."
+
+# Google Cloud credentials
 kubectl create secret generic credentials-secret \
     --from-file=credentials.json=credentials.json \
     --dry-run=client -o yaml | kubectl apply -f -
+
+# Database credentials
+kubectl create secret generic database-credentials \
+    --from-literal=DB_USER=admin \
+    --from-literal=DB_PASSWORD=quest \
+    --from-literal=DB_HOST=questdb-service \
+    --from-literal=DB_PORT=8812 \
+    --dry-run=client -o yaml | kubectl apply -f -
+
 echo "Secrets created"
 echo ""
 

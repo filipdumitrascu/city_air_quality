@@ -19,8 +19,28 @@ spec:
         ports:
         - containerPort: 8000
         env:
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: DB_PASSWORD
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: DB_PORT
         - name: DATABASE_URL
-          value: "postgresql://admin:quest@questdb-service:8812/qdb"
+          value: "postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/qdb"
         - name: LOG_LEVEL
           value: "INFO"
         resources:

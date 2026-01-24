@@ -1,6 +1,6 @@
 # Flow Deployment (first time)
 
-## 1. Create Cluster (cost ~70$ per month)
+## 1. Create Cluster (cost ~18$ per week)
 ```bash
 gcloud container clusters create cityairq-standard \
     --zone=us-central1-a \
@@ -57,7 +57,7 @@ curl http://<EXTERNAL-IP>:8000/health
 
 ```bash
 ./build-push.sh
-./delete.sh  # deletes deployment for restart, not the cluster
+./clean.sh  # deletes deployment for restart, not the cluster
 ./deploy.sh
 ./info.sh
 ```
