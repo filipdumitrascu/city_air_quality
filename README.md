@@ -5,7 +5,6 @@ Backend infrastructure and AI model for air quality monitoring in Bucharest.
 ## Contributors
 
 * [Filip Dumitrascu](https://github.com/filipdumitrascu)
-* [Bianca Dumitru](https://github.com/dbianca0907)
 
 ## Quick Start
 
@@ -20,57 +19,22 @@ chmod +x scripts/*.sh
 
 Start all services locally:
 ```bash
-./scripts/docker-start.sh
+./scripts/local/run.sh
 ```
 
 Stop services:
 ```bash
-./scripts/docker-stop.sh
-```
-
-View logs:
-```bash
-./scripts/docker-logs.sh [service-name]
+./scripts/local/stop.sh -n
 ```
 
 Clean up:
 ```bash
-./scripts/docker-clean.sh
+./scripts/local/stop.sh -y
 ```
 
 ### Production Deployment (Kubernetes)
 
-Setup Kubernetes access:
-```bash
-./scripts/k8s-setup.sh
-```
-
-Deploy all services:
-```bash
-./scripts/k8s-deploy.sh
-```
-
-Check status:
-```bash
-./scripts/k8s-status.sh
-```
-
-View logs:
-```bash
-./scripts/k8s-logs.sh <pod-name>
-```
-
-Delete all services:
-```bash
-./scripts/k8s-delete.sh
-```
-
-### Build and Push Images
-
-Build and push Docker images to Google Artifact Registry:
-```bash
-./scripts/build-push.sh
-```
+See [README.md](scripts/cloud/README.md) for detailed deployment instructions.
 
 ## Documentation
 
