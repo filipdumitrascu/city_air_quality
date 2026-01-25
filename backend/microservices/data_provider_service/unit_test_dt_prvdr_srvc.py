@@ -15,8 +15,8 @@ sys.modules['database_service'] = MagicMock()
 sys.modules['database_service.client'] = MagicMock()
 sys.modules['database_service.client.database_service_client'] = MagicMock()
 
-with patch('pubsub.message_queue_googlepubsub.pubsub_client.pubsub_v1.SubscriberClient'):
-    with patch('pubsub.message_queue_googlepubsub.pubsub_client.pubsub_v1.PublisherClient'):
+with patch('common.message_queue_googlepubsub.pubsub_client.pubsub_v1.SubscriberClient'):
+    with patch('common.message_queue_googlepubsub.pubsub_client.pubsub_v1.PublisherClient'):
         from data_provider_service import process_message
 
 class DummyMessage:

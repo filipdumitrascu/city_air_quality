@@ -11,8 +11,8 @@ sys.modules['google.cloud'] = MagicMock()
 sys.modules['google.cloud.pubsub_v1'] = MagicMock()
 sys.modules['google.auth'] = MagicMock()
 
-with patch('pubsub.message_queue_googlepubsub.pubsub_client.pubsub_v1.SubscriberClient'):
-    with patch('pubsub.message_queue_googlepubsub.pubsub_client.pubsub_v1.PublisherClient'):
+with patch('common.message_queue_googlepubsub.pubsub_client.pubsub_v1.SubscriberClient'):
+    with patch('common.message_queue_googlepubsub.pubsub_client.pubsub_v1.PublisherClient'):
         from client_message_handler import app, response_queue
 
 from httpx import AsyncClient
