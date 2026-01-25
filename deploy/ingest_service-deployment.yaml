@@ -23,6 +23,8 @@ spec:
           value: /app/credentials.json
         - name: DATABASE_SERVICE_URL
           value: "http://database-service:8000"
+        - name: GCP_PROJECT_ID
+          value: "elite-totem-484208-e2"
         volumeMounts:
         - name: credentials-volume
           mountPath: /app/credentials.json

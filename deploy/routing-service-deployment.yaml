@@ -28,6 +28,8 @@ spec:
           value: "http://database-service:8000"
         - name: LOG_LEVEL
           value: "INFO"
+        - name: GCP_PROJECT_ID
+          value: "elite-totem-484208-e2"
         resources:
           requests:
             memory: "128Mi"

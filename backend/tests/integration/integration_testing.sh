@@ -20,6 +20,7 @@ BASE_URL="http://$EXTERNAL_IP:8000"
 echo "Testing CityAirQ at: $BASE_URL"
 echo ""
 
+
 # TEST 1: Health Check
 echo "Test 1: Health Check"
 HEALTH=$(curl -s $BASE_URL/health)
@@ -32,6 +33,7 @@ else
     exit 1
 fi
 echo ""
+
 
 # TEST 2: Ingest Data (PubSub Flow)
 echo "Test 2: Ingest Data via PubSub"
@@ -67,6 +69,7 @@ echo "Waiting for PubSub processing..."
 sleep 5
 echo ""
 
+
 # TEST 3: Query Data (QuestDB)
 echo "Test 3: Query Data from QuestDB"
 
@@ -94,6 +97,7 @@ else
     echo "No results found"
 fi
 echo ""
+
 
 # TEST 4: Route Calculation (cache miss)
 echo "Test 4: Route Calculation (first call)"
@@ -128,6 +132,7 @@ else
 fi
 echo ""
 
+
 # TEST 5: Route Calculation (cache hit)
 echo "Test 5: Route Calculation (second call)"
 
@@ -153,6 +158,7 @@ else
 fi
 echo ""
 
+
 # TEST 6: Redis Cache Stats
 echo "Test 6: Redis Cache Statistics"
 echo "Requires port-forward:"
@@ -161,13 +167,14 @@ echo "Then run:"
 echo "curl http://localhost:8080/cache/stats"
 echo ""
 
+
 # SUMMARY
 echo "Integration Test Summary"
 echo "Health Check: PASSED"
 echo "Ingest: PASSED"
-echo "Query: PASSED ($RESULT_COUNT results)"
-echo "Routing: PASSED (${DISTANCE} km, PM10: $PM10)"
-echo "Redis Cache: PASSED (${SPEEDUP}x speedup)"
+echo "Query: ($RESULT_COUNT results)"
+echo "Routing: (${DISTANCE} km, PM10: $PM10)"
+echo "Redis Cache: (${SPEEDUP} x speedup)"
 echo ""
 echo "All integration tests completed successfully"
 echo ""

@@ -50,6 +50,62 @@ kubectl wait --for=condition=ready pod -l app=questdb --timeout=180s --namespace
 echo "QuestDB ready"
 echo ""
 
+# Initialize QuestDB schema
+echo "Initializing QuestDB schema..."
+sleep 10  # Extra wait for QuestDB to fully initialize
+
+# Port-forward in background
+kubectl port-forward svc/questdb-service 8812:8812 &
+PF_PID=$!
+sleep 5
+
+# Create table
+python3 << 'EOF'
+import psycopg2
+import sys
+
+try:
+    conn = psycopg2.connect(
+        host='localhost',
+        port=8812,
+        user='admin',
+        password='quest',
+        database='qdb'
+    )
+    cur = conn.cursor()
+    
+    # Create table (IF NOT EXISTS prevents errors on redeploy)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS sensor_readings (
+        sensor_id SYMBOL,
+        sensor_type SYMBOL,
+        latitude DOUBLE,
+        longitude DOUBLE,
+        pm10 DOUBLE,
+        pm25 DOUBLE,
+        no2 DOUBLE,
+        timestamp TIMESTAMP
+    ) timestamp(timestamp) PARTITION BY DAY;
+    """)
+    conn.commit()
+    
+    # Verify
+    cur.execute("SELECT count(*) FROM sensor_readings;")
+    count = cur.fetchone()[0]
+    print(f"Table sensor_readings ready (rows: {count})")
+    
+    cur.close()
+    conn.close()
+except Exception as e:
+    print(f"Error creating schema: {e}")
+    sys.exit(1)
+EOF
+
+# Kill port-forward
+kill $PF_PID 2>/dev/null || true
+echo "Schema initialized"
+echo ""
+
 # Deploy Database Service (depends on QuestDB)
 echo "Deploying Database Service..."
 kubectl apply -f database_service-deployment.yaml

@@ -9,7 +9,7 @@ echo "Building and pushing Docker images..."
 
 # Authenticate with GCR
 echo "Authenticating with Docker..."
-gcloud auth configure-docker
+gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
 # Create buildx instance if not exists
 if ! docker buildx inspect multiarch-builder &> /dev/null; then
