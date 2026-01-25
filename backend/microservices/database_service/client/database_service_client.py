@@ -3,7 +3,7 @@ import logging
 from fastapi import HTTPException
 import os
 
-DATABASE_SERVER_URL = "http://35.187.0.103:8003"
+DATABASE_SERVER_URL = os.getenv("DATABASE_SERVICE_URL", "http://database-service:8000")
 
 logging.basicConfig(
     level=logging.DEBUG, 
@@ -11,12 +11,11 @@ logging.basicConfig(
     filemode='w', 
     format='%(asctime)s - %(levelname)s - %(message)s'
 ) 
-client = httpx.AsyncClient()
 
 async def send_data_to_database(payload):
     try:
         url = f"{DATABASE_SERVER_URL}/add_data/"
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 url,
                 json=payload,
@@ -35,8 +34,9 @@ async def send_data_to_database(payload):
 async def get_data_from_database(payload):
     try:
         url = f"{DATABASE_SERVER_URL}/get_data/"
-        response = await client.get(url, params=payload)
-        response.raise_for_status() 
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=payload)
+            response.raise_for_status() 
        
         logging.info("Data successfully received from DatabaseServer")
         data = response.text

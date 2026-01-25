@@ -104,7 +104,7 @@ async def process_message(message):
         # Handle layer selection
         # If no specific layers requested, query all available pollution metrics
         available_layers = ["Temperature", "Humidity", "Pressure", "Altitude", "CO2", "PM1_0", "PM2_5", "PM10"]
-        selected_layers = decoded_message["layers"] if decoded_message["layers"] else available_layers
+        selected_layers = decoded_message.get("layers") or available_layers
         decoded_message["layers"] = selected_layers
 
         # Redis cache check
