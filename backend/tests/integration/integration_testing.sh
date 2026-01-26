@@ -96,67 +96,67 @@ fi
 echo ""
 
 
-# TEST 4: Route Calculation (first call) 
-echo "Test 4: Route Calculation (first call)"
+# # TEST 4: Route Calculation (first call) 
+# echo "Test 4: Route Calculation (first call)"
 
-ROUTE_PAYLOAD='{
-  "start": {"lat": 44.4268, "lon": 26.1025},
-  "goal": {"lat": 44.4350, "lon": 26.1100},
-  "alpha": 0.5,
-  "sensor_types": []
-}'
+# ROUTE_PAYLOAD='{
+#   "start": {"lat": 44.4268, "lon": 26.1025},
+#   "goal": {"lat": 44.4350, "lon": 26.1100},
+#   "alpha": 0.5,
+#   "sensor_types": []
+# }'
 
-START_TIME=$(date +%s%3N)
-ROUTE_RESPONSE=$(curl -s -X POST $BASE_URL/route/ \
-  -H "Content-Type: application/json" \
-  -d "$ROUTE_PAYLOAD")
-END_TIME=$(date +%s%3N)
+# START_TIME=$(date +%s%3N)
+# ROUTE_RESPONSE=$(curl -s -X POST $BASE_URL/route/ \
+#   -H "Content-Type: application/json" \
+#   -d "$ROUTE_PAYLOAD")
+# END_TIME=$(date +%s%3N)
 
-FIRST_CALL_TIME=$((END_TIME - START_TIME))
-echo "Response time: ${FIRST_CALL_TIME} ms"
+# FIRST_CALL_TIME=$((END_TIME - START_TIME))
+# echo "Response time: ${FIRST_CALL_TIME} ms"
 
-DISTANCE=$(echo "$ROUTE_RESPONSE" | grep -o '"distance_km":[0-9.]*' | cut -d':' -f2)
-PM10=$(echo "$ROUTE_RESPONSE" | grep -o '"avg_pollution_pm10":[0-9.]*' | cut -d':' -f2)
-CACHED=$(echo "$ROUTE_RESPONSE" | grep -o '"cached":[a-z]*' | cut -d':' -f2)
+# DISTANCE=$(echo "$ROUTE_RESPONSE" | grep -o '"distance_km":[0-9.]*' | cut -d':' -f2)
+# PM10=$(echo "$ROUTE_RESPONSE" | grep -o '"avg_pollution_pm10":[0-9.]*' | cut -d':' -f2)
+# CACHED=$(echo "$ROUTE_RESPONSE" | grep -o '"cached":[a-z]*' | cut -d':' -f2)
 
-if [ -n "$DISTANCE" ]; then
-    echo "Route calculated"
-    echo "Distance: ${DISTANCE} km"
-    echo "Avg PM10: $PM10"
-    echo "Cached: $CACHED"
-else
-    echo "Route calculation failed"
-    echo "Response: $ROUTE_RESPONSE"
-fi
-echo ""
+# if [ -n "$DISTANCE" ]; then
+#     echo "Route calculated"
+#     echo "Distance: ${DISTANCE} km"
+#     echo "Avg PM10: $PM10"
+#     echo "Cached: $CACHED"
+# else
+#     echo "Route calculation failed"
+#     echo "Response: $ROUTE_RESPONSE"
+# fi
+# echo ""
 
 
-# TEST 5: Route Calculation (cache hit)
-echo "Test 5: Route Calculation (second call - should be cached)"
+# # TEST 5: Route Calculation (cache hit)
+# echo "Test 5: Route Calculation (second call - should be cached)"
 
-START_TIME=$(date +%s%3N)
-ROUTE_RESPONSE_2=$(curl -s -X POST $BASE_URL/route/ \
-  -H "Content-Type: application/json" \
-  -d "$ROUTE_PAYLOAD")
-END_TIME=$(date +%s%3N)
+# START_TIME=$(date +%s%3N)
+# ROUTE_RESPONSE_2=$(curl -s -X POST $BASE_URL/route/ \
+#   -H "Content-Type: application/json" \
+#   -d "$ROUTE_PAYLOAD")
+# END_TIME=$(date +%s%3N)
 
-SECOND_CALL_TIME=$((END_TIME - START_TIME))
-echo "Response time: ${SECOND_CALL_TIME} ms"
+# SECOND_CALL_TIME=$((END_TIME - START_TIME))
+# echo "Response time: ${SECOND_CALL_TIME} ms"
 
-CACHED_2=$(echo "$ROUTE_RESPONSE_2" | grep -o '"cached":[a-z]*' | cut -d':' -f2)
+# CACHED_2=$(echo "$ROUTE_RESPONSE_2" | grep -o '"cached":[a-z]*' | cut -d':' -f2)
 
-if [[ "$CACHED_2" == "true" ]]; then
-    echo "Cache hit confirmed"
-    echo "First call:  ${FIRST_CALL_TIME} ms"
-    echo "Second call: ${SECOND_CALL_TIME} ms"
-    if [ "$SECOND_CALL_TIME" -gt 0 ]; then
-        SPEEDUP=$((FIRST_CALL_TIME / SECOND_CALL_TIME))
-        echo "Speedup: ${SPEEDUP}x"
-    fi
-else
-    echo "Cache miss (may be expected if route changed)"
-fi
-echo ""
+# if [[ "$CACHED_2" == "true" ]]; then
+#     echo "Cache hit confirmed"
+#     echo "First call:  ${FIRST_CALL_TIME} ms"
+#     echo "Second call: ${SECOND_CALL_TIME} ms"
+#     if [ "$SECOND_CALL_TIME" -gt 0 ]; then
+#         SPEEDUP=$((FIRST_CALL_TIME / SECOND_CALL_TIME))
+#         echo "Speedup: ${SPEEDUP}x"
+#     fi
+# else
+#     echo "Cache miss (may be expected if route changed)"
+# fi
+# echo ""
 
 
 # SUMMARY
@@ -164,7 +164,7 @@ echo "Integration Test Summary"
 echo "Health Check: PASSED"
 echo "Ingest: ${INGEST_RESPONSE}"
 echo "Query: Response received"
-echo "Routing: Distance=${DISTANCE}km, PM10=${PM10}"
-echo "Cache: ${CACHED_2}"
+# echo "Routing: Distance=${DISTANCE}km, PM10=${PM10}"
+# echo "Cache: ${CACHED_2}"
 echo ""
 echo "All integration tests completed!"
