@@ -40,7 +40,7 @@ echo ""
 
 # Deploy Redis first (no dependencies)
 echo "Deploying Redis..."
-kubectl apply -f redis-deployment.yaml
+kubectl apply -f dbs/redis-deployment.yaml
 echo "Waiting for Redis to be ready..."
 kubectl wait --for=condition=ready pod -l app=redis --timeout=120s --namespace=default
 echo "Redis ready"
@@ -48,7 +48,7 @@ echo ""
 
 # Deploy QuestDB (no dependencies)
 echo "Deploying QuestDB..."
-kubectl apply -f questdb-deployment.yaml
+kubectl apply -f dbs/questdb-deployment.yaml
 echo "Waiting for QuestDB to be ready..."
 kubectl wait --for=condition=ready pod -l app=questdb --timeout=180s --namespace=default
 echo "QuestDB ready"
@@ -112,7 +112,7 @@ echo ""
 
 # Deploy Database Service (depends on QuestDB)
 echo "Deploying Database Service..."
-kubectl apply -f database_service-deployment.yaml
+kubectl apply -f microservices/database_service-deployment.yaml
 echo "Waiting for Database Service to be ready..."
 kubectl wait --for=condition=ready pod -l app=database-service --timeout=120s --namespace=default
 echo "Database Service ready"
@@ -120,7 +120,7 @@ echo ""
 
 # Deploy Routing Service (depends on Redis + Database Service)
 echo "Deploying Routing Service..."
-kubectl apply -f routing-service-deployment.yaml
+kubectl apply -f micorservices/routing-service-deployment.yaml
 echo "Waiting for Routing Service to be ready..."
 kubectl wait --for=condition=ready pod -l app=routing-service --timeout=120s --namespace=default
 echo "Routing Service ready"
@@ -128,22 +128,30 @@ echo ""
 
 # Deploy Ingest Service (depends on Database Service)
 echo "Deploying Ingest Service..."
-kubectl apply -f ingest_service-deployment.yaml
+kubectl apply -f microservices/ingest_service-deployment.yaml
 echo "Ingest Service deployed"
 echo ""
 
 # Deploy Data Provider Service (depends on Database Service)
 echo "Deploying Data Provider Service..."
-kubectl apply -f data_provider_service-deployment.yaml
+kubectl apply -f microservices/data_provider_service-deployment.yaml
 echo "Data Provider Service deployed"
 echo ""
 
 # Deploy Client Message Handler (public endpoint)
 echo "Deploying Client Message Handler..."
-kubectl apply -f client_message_handler-deployment.yaml
+kubectl apply -f microservices/client_message_handler-deployment.yaml
 echo "Waiting for Client Handler to be ready..."
 kubectl wait --for=condition=ready pod -l app=client-message-handler --timeout=120s --namespace=default
 echo "Client Message Handler ready"
+echo ""
+
+# Deploy Frontend
+echo "Deploying Frontend..."
+kubectl apply -f frontend/frontend-deployment.yaml
+echo "Waiting for Frontend to be ready..."
+kubectl wait --for=condition=ready pod -l app=frontend --timeout=120s --namespace=default
+echo "Frontend ready"
 echo ""
 
 # Wait for all deployments

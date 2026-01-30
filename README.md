@@ -7,6 +7,7 @@ Backend infrastructure and AI model for air quality monitoring in Bucharest.
 ## Contributors
 
 * [Filip Dumitrascu](https://github.com/filipdumitrascu)
+* [Bianca Dumitru](https://github.com/dbianca0907)
 
 ## Quick Start
 

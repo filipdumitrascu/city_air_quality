@@ -13,7 +13,7 @@ echo "  CityAirQ - Starting Services"
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/../../backend"
+cd "$SCRIPT_DIR/../../deploy"
 
 # Check credentials
 if [ ! -f "credentials.json" ]; then
@@ -95,7 +95,7 @@ else
 fi
 
 # Insert in table 
-python3 config/questdb/import_from_excel.py config/questdb/cityairq_sensor_data.xlsx
+python3 ../backend/config/questdb/import_from_excel.py ../backend/config/questdb/cityairq_sensor_data.xlsx
 
 
 echo ""
@@ -104,6 +104,7 @@ docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/nul
 
 echo ""
 echo "  Access Services"
+echo "  Frontend            http://localhost:3000"
 echo "  QuestDB Web:        http://localhost:9000"
 echo "  Client Handler:     http://localhost:8000/docs"
 echo "  Database Service:   http://localhost:8001/docs"

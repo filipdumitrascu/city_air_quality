@@ -8,7 +8,7 @@ echo "  CityAirQ - Stopping Services"
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/../../backend"
+cd "$SCRIPT_DIR/../../deploy"
 
 # Stop and remove containers + volumes
 echo "Stopping and removing containers & volumes..."
@@ -24,11 +24,11 @@ echo "Cleaning service logs..."
 
 # List of microservices with logs
 SERVICES=(
-    "microservices/client_message_handler/logs"
-    "microservices/data_provider_service/logs"
-    "microservices/database_service/logs"
-    "microservices/ingest_service/logs"
-    "microservices/routing_service/logs"
+    "../backend/microservices/client_message_handler/logs"
+    "../backend/microservices/data_provider_service/logs"
+    "../backend/microservices/database_service/logs"
+    "../backend/microservices/ingest_service/logs"
+    "../backend/microservices/routing_service/logs"
 )
 
 CLEANED=0
