@@ -1,9 +1,8 @@
 #!/bin/bash
-# Docker Compose Start Script - Clean Output Version
+# Docker Compose Start Script
 
 set -e
 
-# Clean terminal output settings
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 export BUILDKIT_PROGRESS=plain
@@ -17,11 +16,23 @@ cd "$SCRIPT_DIR/../../deploy"
 
 # Check credentials
 if [ ! -f "credentials.json" ]; then
-    echo "WARNING: credentials.json not found"
-    echo ""
+    echo "ERROR: credentials.json not found in deploy/"
+    echo "Copy your Google Cloud credentials to deploy/credentials.json"
+    exit 1
 fi
 
-# Build and start services - CLEAN WAY
+# Check if ports are in use
+for port in 9000 8812 8000 8001 8080 3000 6379; do
+    if lsof -i :$port > /dev/null 2>&1; then
+        echo "WARNING: Port $port is in use. Attempting to free it..."
+        # Try to kill the process using the port
+        fuser -k $port/tcp 2>/dev/null || true
+        sleep 1
+    fi
+done
+
+
+# Build and start services
 echo "Building and starting services..."
 echo ""
 
@@ -33,14 +44,16 @@ echo ""
 echo "Waiting for services to be ready..."
 echo ""
 
+
 # Wait for Redis
 echo -n "Redis..."
-sleep 3
-if docker exec cityairq-redis redis-cli ping > /dev/null 2>&1; then
-    echo " ready"
-else
-    echo " not responding"
-fi
+for i in {1..10}; do
+    if docker exec cityairq-redis redis-cli ping > /dev/null 2>&1; then
+        echo " ready"
+        break
+    fi
+    sleep 2
+done
 
 # Wait for QuestDB
 echo -n "QuestDB..."
@@ -49,8 +62,6 @@ if docker ps | grep -q cityairq-questdb; then
 else
     echo " container not found"
 fi
-
-sleep 5
 
 # Create QuestDB schema
 echo -n "Checking QuestDB schema..."
@@ -64,7 +75,7 @@ try:
     cur = conn.cursor()
 
     # Create table
-    with open('config/questdb/schema.sql', 'r') as f:
+    with open('../backend/config/questdb/schema.sql', 'r') as f:
         schema = f.read()
     cur.execute(schema)
     conn.commit()
@@ -77,34 +88,76 @@ except Exception as e:
     sys.exit(1)
 PYTHON_SCRIPT
 
+# Wait for services to start
+sleep 5
 
 # Wait for Database Service
 echo -n "Database Service..."
-if curl -sf http://localhost:8001/docs > /dev/null 2>&1; then
-    echo " ready"
-else
-    echo " not responding"
-fi
+for i in {1..15}; do
+    if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
+        echo " ready"
+        break
+    fi
+    if [ $i -eq 15 ]; then
+        echo " timeout"
+    fi
+    sleep 2
+done
 
 # Wait for Routing Service
 echo -n "Routing Service..."
-if curl -sf http://localhost:8080/docs > /dev/null 2>&1; then
-    echo " ready"
-else
-    echo " not responding"
+for i in {1..15}; do
+    if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+        echo " ready"
+        break
+    fi
+    if [ $i -eq 15 ]; then
+        echo " timeout"
+    fi
+    sleep 2
+done
+
+# Wait for Client Message Handler
+echo -n "Client Handler..."
+for i in {1..15}; do
+    if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+        echo " ready"
+        break
+    fi
+    if [ $i -eq 15 ]; then
+        echo " timeout"
+    fi
+    sleep 2
+done
+
+# Wait for Frontend
+echo -n "Frontend..."
+for i in {1..15}; do
+    if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+        echo " ready"
+        break
+    fi
+    if [ $i -eq 15 ]; then
+        echo " timeout"
+    fi
+    sleep 2
+done
+
+# Optional: Import sample data
+EXCEL_FILE="../backend/config/questdb/cityairq_sensor_data.xlsx"
+if [ -f "$EXCEL_FILE" ]; then
+    echo ""
+    echo -n "Importing sample data..."
+    python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE" 2>/dev/null && echo " done" || echo " skipped"
 fi
 
-# Insert in table 
-python3 ../backend/config/questdb/import_from_excel.py ../backend/config/questdb/cityairq_sensor_data.xlsx
-
-
 echo ""
-echo " Service Status"
+echo "Service Status:"
 docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || docker compose ps
 
 echo ""
-echo "  Access Services"
-echo "  Frontend            http://localhost:3000"
+echo "Access Services:"
+echo "  Frontend:           http://localhost:3000"
 echo "  QuestDB Web:        http://localhost:9000"
 echo "  Client Handler:     http://localhost:8000/docs"
 echo "  Database Service:   http://localhost:8001/docs"
@@ -113,8 +166,7 @@ echo "  Ingest Service:     http://localhost:8003/docs"
 echo "  Routing Service:    http://localhost:8080/docs"
 echo "  Redis:              localhost:6379"
 echo ""
-echo "  Useful Commands"
-echo "  View logs:      docker compose logs -f <service>"
-echo "  Stop services:  docker compose down"
-echo "  Full cleanup:   ./scripts/local/stop.sh -y"
+echo "Useful Commands:"
+echo "  View logs:      cd deploy && docker compose logs -f <service>"
+echo "  Stop services:  ./scripts/local/stop.sh"
 echo ""

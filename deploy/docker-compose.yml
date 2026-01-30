@@ -65,8 +65,6 @@ services:
       - LOG_LEVEL=INFO
     ports:
       - "8080:8000"
-    volumes:
-      - ./microservices/routing_service/logs:/app/logs
     depends_on:
       redis:
         condition: service_healthy
@@ -82,7 +80,7 @@ services:
       dockerfile: microservices/data_provider_service/Dockerfile
     container_name: cityairq-data-provider
     volumes:
-      - credentials.json:/app/deploy/credentials.json
+      - ./credentials.json:/app/credentials.json:ro
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
       - DATABASE_SERVICE_URL=http://database-service:8000
@@ -102,7 +100,7 @@ services:
       dockerfile: microservices/ingest_service/Dockerfile
     container_name: cityairq-ingest
     volumes:
-      - credentials.json:/app/deploy/credentials.json
+      - ./credentials.json:/app/credentials.json:ro
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
       - DATABASE_SERVICE_URL=http://database-service:8000
@@ -121,7 +119,7 @@ services:
       dockerfile: microservices/client_message_handler/Dockerfile
     container_name: cityairq-client-handler
     volumes:
-      - credentials.json:/app/deploy/credentials.json
+      - ./credentials.json:/app/credentials.json:ro
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
       - DATABASE_SERVICE_URL=http://database-service:8000

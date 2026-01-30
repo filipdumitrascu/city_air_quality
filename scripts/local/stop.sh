@@ -54,11 +54,12 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo "Removing CityAirQ images..."
     
     docker rmi -f \
-        backend-data-provider-service:latest \
-        backend-database-service:latest \
-        backend-ingest-service:latest \
-        backend-routing-service:latest \
-        backend-client-message-handler:latest \
+        deploy-data-provider-service:latest \
+        deploy-database-service:latest \
+        deploy-ingest-service:latest \
+        deploy-routing-service:latest \
+        deploy-client-message-handler:latest \
+        deploy-frontend:latest \
         redis:7-alpine \
         questdb/questdb:latest
         2>/dev/null || true
