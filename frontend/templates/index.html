@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CityAirQ - Air Quality Routing</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <h1>CityAirQ</h1>
+            <p class="subtitle">Pollution-Aware Routing</p>
+            
+            <!-- Route Form -->
+            <div class="form-section">
+                <h3>Calculate Route</h3>
+                
+                <div class="form-group">
+                    <label>Start Point</label>
+                    <div class="coord-inputs">
+                        <input type="number" id="start-lat" placeholder="Latitude" step="0.0001" value="44.4268">
+                        <input type="number" id="start-lon" placeholder="Longitude" step="0.0001" value="26.1025">
+                    </div>
+                    <button class="btn-small" onclick="setStartFromMap()">Pick from map</button>
+                </div>
+                
+                <div class="form-group">
+                    <label>End Point</label>
+                    <div class="coord-inputs">
+                        <input type="number" id="end-lat" placeholder="Latitude" step="0.0001" value="44.4350">
+                        <input type="number" id="end-lon" placeholder="Longitude" step="0.0001" value="26.1100">
+                    </div>
+                    <button class="btn-small" onclick="setEndFromMap()">Pick from map</button>
+                </div>
+                
+                <div class="form-group">
+                    <label>Pollution Weight (alpha): <span id="alpha-value">0.5</span></label>
+                    <input type="range" id="alpha" min="0" max="1" step="0.1" value="0.5" 
+                           oninput="document.getElementById('alpha-value').textContent = this.value">
+                    <div class="alpha-labels">
+                        <span>Fastest</span>
+                        <span>Cleanest</span>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Sensor Types</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" id="sensor-fixed" checked> Fixed Sensors</label>
+                        <label><input type="checkbox" id="sensor-mobile" checked> Mobile Sensors</label>
+                    </div>
+                </div>
+                
+                <button class="btn-primary" onclick="calculateRoute()">Calculate Route</button>
+            </div>
+            
+            <!-- Query Form -->
+            <div class="form-section">
+                <h3>Query Pollution Data</h3>
+                
+                <div class="form-group">
+                    <label>Center Point</label>
+                    <div class="coord-inputs">
+                        <input type="number" id="query-lat" placeholder="Latitude" step="0.0001" value="44.4268">
+                        <input type="number" id="query-lon" placeholder="Longitude" step="0.0001" value="26.1025">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Radius (km): <span id="radius-value">5</span></label>
+                    <input type="range" id="query-radius" min="1" max="20" step="1" value="5"
+                           oninput="document.getElementById('radius-value').textContent = this.value">
+                </div>
+                
+                <button class="btn-secondary" onclick="queryPollutionData()">Query Data</button>
+            </div>
+            
+            <!-- Results -->
+            <div class="results-section" id="results-section" style="display: none;">
+                <h3>Route Results</h3>
+                <div id="route-results"></div>
+            </div>
+        </div>
+        
+        <!-- Map -->
+        <div class="map-container">
+            <div id="map"></div>
+            
+            <!-- Legend -->
+            <div class="legend">
+                <h4>Pollution Level (PM10)</h4>
+                <div class="legend-item"><span class="legend-color" style="background: #00ff00;"></span> Good (0-50)</div>
+                <div class="legend-item"><span class="legend-color" style="background: #ffff00;"></span> Moderate (50-100)</div>
+                <div class="legend-item"><span class="legend-color" style="background: #ff8800;"></span> Unhealthy (100-150)</div>
+                <div class="legend-item"><span class="legend-color" style="background: #ff0000;"></span> Very Unhealthy (150+)</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p>Calculating route...</p>
+    </div>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Config -->
+    <script>
+        const API_URL = "{{ api_url }}";
+    </script>
+    
+    <!-- Custom JS -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
