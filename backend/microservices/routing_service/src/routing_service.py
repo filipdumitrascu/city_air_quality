@@ -120,7 +120,7 @@ async def calculate_route(request: RouteRequest):
     start_time = time.time()
     
     try:
-        logger.info(f"Route request: {request.start} → {request.goal}, alpha={request.alpha}, sensors={request.sensor_types}")
+        logger.info(f"Route request: {request.start} -> {request.goal}, alpha={request.alpha}, sensors={request.sensor_types}")
         
         # Redis cache check
         cache_key = cache_manager.generate_cache_key(
