@@ -58,7 +58,10 @@
                     </div>
                 </div>
                 
-                <button class="btn-primary" onclick="calculateRoute()">Calculate Route</button>
+                <div class="button-group">
+                    <button class="btn-primary" onclick="calculateRoute()">Calculate Route</button>
+                    <button class="btn-clear" onclick="clearRoute()">Clear Route</button>
+                </div>
             </div>
             
             <!-- Query Form -->
@@ -79,7 +82,10 @@
                            oninput="document.getElementById('radius-value').textContent = this.value">
                 </div>
                 
-                <button class="btn-secondary" onclick="queryPollutionData()">Query Data</button>
+                <div class="button-group">
+                    <button class="btn-secondary" onclick="queryPollutionData()">Query Data</button>
+                    <button class="btn-clear" onclick="clearPollutionData()">Clear Data</button>
+                </div>
             </div>
             
             <!-- Results -->
@@ -95,11 +101,15 @@
             
             <!-- Legend -->
             <div class="legend">
-                <h4>Pollution Level (PM10)</h4>
+                <h4>Air Quality Index</h4>
                 <div class="legend-item"><span class="legend-color" style="background: #00ff00;"></span> Good (0-50)</div>
                 <div class="legend-item"><span class="legend-color" style="background: #ffff00;"></span> Moderate (50-100)</div>
                 <div class="legend-item"><span class="legend-color" style="background: #ff8800;"></span> Unhealthy (100-150)</div>
                 <div class="legend-item"><span class="legend-color" style="background: #ff0000;"></span> Very Unhealthy (150+)</div>
+                <hr style="margin: 10px 0; border-color: #0f3460;">
+                <h4>Markers</h4>
+                <div class="legend-item"><span style="background:#00cc66; width:16px; height:16px; display:inline-block; border-radius:2px;"></span> Start Point</div>
+                <div class="legend-item"><span style="color:#ff4444; font-weight:bold; font-size:16px;">✕</span> End Point</div>
             </div>
         </div>
     </div>
@@ -112,11 +122,6 @@
     
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <!-- Config -->
-    <script>
-        const API_URL = "{{ api_url }}";
-    </script>
     
     <!-- Custom JS -->
     <script src="/static/js/app.js"></script>

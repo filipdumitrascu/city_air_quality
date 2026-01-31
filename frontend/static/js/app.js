@@ -1,3 +1,6 @@
+// API URL - use proxy endpoints (same origin, no CORS issues)
+const API_URL = "/api";
+
 // Map initialization
 const map = L.map('map').setView([44.4268, 26.1025], 13);
 
@@ -18,27 +21,44 @@ let endMarker = null;
 // Map click mode
 let clickMode = null; // 'start', 'end', or null
 
-// Custom icons
+// Custom icons - Square for start, X for end
 const startIcon = L.divIcon({
-    className: 'custom-marker start-marker',
-    html: '<div style="background:#00ff88; width:20px; height:20px; border-radius:50%; border:3px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10]
+    className: 'custom-marker',
+    html: '<div class="marker-start">S</div>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14]
 });
 
 const endIcon = L.divIcon({
-    className: 'custom-marker end-marker',
-    html: '<div style="background:#ff4444; width:20px; height:20px; border-radius:50%; border:3px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10]
+    className: 'custom-marker',
+    html: '<div class="marker-end">✕</div>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14]
 });
 
-// Get pollution color based on PM10 value
-function getPollutionColor(pm10) {
-    if (pm10 <= 50) return '#00ff00';      // Good - green
-    if (pm10 <= 100) return '#ffff00';     // Moderate - yellow
-    if (pm10 <= 150) return '#ff8800';     // Unhealthy - orange
-    return '#ff0000';                       // Very unhealthy - red
+// Calculate combined Air Quality Index from multiple pollutants
+function calculateAQI(pm10, pm25, no2) {
+    // Simple combined index: weighted average
+    // PM2.5 is considered more harmful, so weighted higher
+    const pm10Index = pm10 || 0;
+    const pm25Index = (pm25 || 0) * 1.5;  // PM2.5 weighted 1.5x
+    const no2Index = (no2 || 0) * 0.8;    // NO2 weighted 0.8x
+    
+    return (pm10Index + pm25Index + no2Index) / 3.3;  // Normalize
+}
+
+// Get pollution color based on combined AQI
+function getPollutionColor(aqi) {
+    if (aqi <= 50) return '#00ff00';      // Good - green
+    if (aqi <= 100) return '#ffff00';     // Moderate - yellow
+    if (aqi <= 150) return '#ff8800';     // Unhealthy - orange
+    return '#ff0000';                      // Very unhealthy - red
+}
+
+// Get pollution color from individual values
+function getPollutionColorFromValues(pm10, pm25, no2) {
+    const aqi = calculateAQI(pm10, pm25, no2);
+    return getPollutionColor(aqi);
 }
 
 // Set start point from map click
@@ -78,7 +98,7 @@ function updateStartMarker(lat, lon) {
         markersLayer.removeLayer(startMarker);
     }
     startMarker = L.marker([lat, lon], {icon: startIcon})
-        .bindPopup('Start Point')
+        .bindPopup('<strong>Start Point</strong><br>Click "Pick from map" to change')
         .addTo(markersLayer);
 }
 
@@ -88,7 +108,7 @@ function updateEndMarker(lat, lon) {
         markersLayer.removeLayer(endMarker);
     }
     endMarker = L.marker([lat, lon], {icon: endIcon})
-        .bindPopup('End Point')
+        .bindPopup('<strong>End Point</strong><br>Click "Pick from map" to change')
         .addTo(markersLayer);
 }
 
@@ -103,6 +123,17 @@ function showMessage(message, type) {
                       type === 'success' ? 'success-message' : 'info-message';
     
     resultsDiv.innerHTML = `<div class="${className}">${message}</div>`;
+}
+
+// Clear route from map
+function clearRoute() {
+    routeLayer.clearLayers();
+    document.getElementById('results-section').style.display = 'none';
+}
+
+// Clear pollution data from map
+function clearPollutionData() {
+    pollutionLayer.clearLayers();
 }
 
 // Calculate route
@@ -141,16 +172,37 @@ async function calculateRoute() {
             })
         });
         
+        const data = await response.json();
+        
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Route calculation failed');
+            const errorMsg = data.detail || 'Route calculation failed';
+            if (errorMsg.includes('No pollution data') || errorMsg.includes('No path found')) {
+                showMessage('Not enough pollution data in the selected area to calculate a route. Try a different area or check if sensors are active.', 'error');
+            } else {
+                showMessage(`Error: ${errorMsg}`, 'error');
+            }
+            return;
         }
         
-        const data = await response.json();
+        if (!data.route || !data.route.properties || !data.waypoints) {
+            showMessage('Not enough pollution data in the selected area to calculate a route.', 'error');
+            return;
+        }
+        
+        if (data.waypoints.length === 0) {
+            showMessage('Could not calculate a route. No pollution data found in the selected area.', 'error');
+            return;
+        }
+        
         displayRoute(data);
         
     } catch (error) {
-        showMessage(`Error: ${error.message}`, 'error');
+        console.error('Route error:', error);
+        if (error.message === 'Failed to fetch') {
+            showMessage('Cannot connect to server. Please check your connection.', 'error');
+        } else {
+            showMessage('An error occurred while calculating the route. Please try again.', 'error');
+        }
     } finally {
         document.getElementById('loading').style.display = 'none';
     }
@@ -165,12 +217,15 @@ function displayRoute(data) {
     const waypoints = data.waypoints;
     const props = route.properties;
     
-    // Draw route line with gradient based on pollution
+    // Draw route line with gradient based on combined pollution
     if (waypoints.length > 1) {
         for (let i = 0; i < waypoints.length - 1; i++) {
             const start = waypoints[i];
             const end = waypoints[i + 1];
-            const color = getPollutionColor(start.pollution_level);
+            
+            // Use combined AQI for color
+            const aqi = calculateAQI(start.pm10, start.pm25, start.no2);
+            const color = getPollutionColor(aqi);
             
             L.polyline(
                 [[start.lat, start.lon], [end.lat, end.lon]],
@@ -182,7 +237,6 @@ function displayRoute(data) {
             ).addTo(routeLayer);
         }
     } else if (route.geometry.coordinates.length > 0) {
-        // Fallback: draw simple line
         const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
         L.polyline(coords, {
             color: '#00d9ff',
@@ -191,9 +245,13 @@ function displayRoute(data) {
         }).addTo(routeLayer);
     }
     
-    // Add waypoint markers
+    // Add waypoint markers (pollution circles only for intermediate points)
     waypoints.forEach((wp, index) => {
-        const color = getPollutionColor(wp.pollution_level);
+        // Skip first and last - they get special markers
+        if (index === 0 || index === waypoints.length - 1) return;
+        
+        const aqi = calculateAQI(wp.pm10, wp.pm25, wp.no2);
+        const color = getPollutionColor(aqi);
         
         L.circleMarker([wp.lat, wp.lon], {
             radius: 8,
@@ -206,7 +264,11 @@ function displayRoute(data) {
             <strong>Waypoint ${index + 1}</strong><br>
             Lat: ${wp.lat.toFixed(4)}<br>
             Lon: ${wp.lon.toFixed(4)}<br>
-            PM10: ${wp.pollution_level.toFixed(1)} µg/m³
+            <hr style="margin: 5px 0;">
+            PM10: ${(wp.pm10 || 0).toFixed(1)} µg/m³<br>
+            PM2.5: ${(wp.pm25 || 0).toFixed(1)} µg/m³<br>
+            NO2: ${(wp.no2 || 0).toFixed(1)} µg/m³<br>
+            <strong>AQI: ${aqi.toFixed(0)}</strong>
         `)
         .addTo(routeLayer);
     });
@@ -225,7 +287,7 @@ function displayRoute(data) {
         map.fitBounds(bounds, { padding: [50, 50] });
     }
     
-    // Display results
+    // Display results with all pollutants
     displayResults(props);
 }
 
@@ -244,6 +306,14 @@ function displayResults(props) {
         <div class="result-item">
             <span class="result-label">Avg PM10</span>
             <span class="result-value">${props.avg_pollution_pm10.toFixed(1)} µg/m³</span>
+        </div>
+        <div class="result-item">
+            <span class="result-label">Avg PM2.5</span>
+            <span class="result-value">${(props.avg_pollution_pm25 || 0).toFixed(1)} µg/m³</span>
+        </div>
+        <div class="result-item">
+            <span class="result-label">Avg NO2</span>
+            <span class="result-value">${(props.avg_pollution_no2 || 0).toFixed(1)} µg/m³</span>
         </div>
         <div class="result-item">
             <span class="result-label">Max PM10</span>
@@ -291,16 +361,32 @@ async function queryPollutionData() {
             })
         });
         
+        const data = await response.json();
+        
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Query failed');
+            const errorMsg = data.detail || 'Query failed';
+            if (errorMsg.includes('No data found') || errorMsg.includes('Timeout')) {
+                showMessage('No pollution measurements found in the selected area. Try a larger radius or different location.', 'error');
+            } else {
+                showMessage(`Error: ${errorMsg}`, 'error');
+            }
+            return;
         }
         
-        const data = await response.json();
+        if (!data.data || data.data.length === 0) {
+            showMessage('No pollution measurements found in the selected area. Try a larger radius or different location.', 'error');
+            return;
+        }
+        
         displayPollutionData(data.data, lat, lon, radius);
         
     } catch (error) {
-        showMessage(`Error: ${error.message}`, 'error');
+        console.error('Query error:', error);
+        if (error.message === 'Failed to fetch') {
+            showMessage('Cannot connect to server. Please check your connection.', 'error');
+        } else {
+            showMessage('An error occurred while querying data. Please try again.', 'error');
+        }
     } finally {
         document.getElementById('loading').style.display = 'none';
     }
@@ -313,7 +399,7 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
     
     // Draw query circle
     L.circle([centerLat, centerLon], {
-        radius: radius * 1000, // Convert km to meters
+        radius: radius * 1000,
         color: '#00d9ff',
         fillColor: '#00d9ff',
         fillOpacity: 0.1,
@@ -331,7 +417,9 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
         const pm25 = reading[5];
         const no2 = reading[6];
         
-        const color = getPollutionColor(pm10);
+        // Calculate combined AQI
+        const aqi = calculateAQI(pm10, pm25, no2);
+        const color = getPollutionColor(aqi);
         
         L.circleMarker([lat, lon], {
             radius: 12,
@@ -346,7 +434,8 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
             <hr style="margin: 5px 0;">
             PM10: ${pm10.toFixed(1)} µg/m³<br>
             PM2.5: ${pm25.toFixed(1)} µg/m³<br>
-            NO2: ${no2.toFixed(1)} µg/m³
+            NO2: ${no2.toFixed(1)} µg/m³<br>
+            <strong>AQI: ${aqi.toFixed(0)}</strong>
         `)
         .addTo(pollutionLayer);
     });
