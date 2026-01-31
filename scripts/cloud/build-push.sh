@@ -26,8 +26,10 @@ fi
 
 cd ../../deploy
 
-# Build and push
+# Build and push (with filesystem access permissions)
 echo "Building and pushing all images..."
+export BUILDX_BAKE_ENTITLEMENTS_FS=0
+
 docker buildx bake -f docker-compose.buildx.yaml \
     --push \
     --set '*.platform=linux/amd64'

@@ -120,7 +120,7 @@ echo ""
 
 # Deploy Routing Service (depends on Redis + Database Service)
 echo "Deploying Routing Service..."
-kubectl apply -f micorservices/routing-service-deployment.yaml
+kubectl apply -f microservices/routing-service-deployment.yaml
 echo "Waiting for Routing Service to be ready..."
 kubectl wait --for=condition=ready pod -l app=routing-service --timeout=120s --namespace=default
 echo "Routing Service ready"
