@@ -19,46 +19,37 @@ let startMarker = null;
 let endMarker = null;
 
 // Map click mode
-let clickMode = null; // 'start', 'end', or null
+let clickMode = null;
 
 // Custom icons - Square for start, X for end
 const startIcon = L.divIcon({
     className: 'custom-marker',
-    html: '<div class="marker-start">S</div>',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14]
+    html: '<div style="width:24px; height:24px; background:#00cc66; border:3px solid #fff; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:bold; font-size:12px;">S</div>',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
 });
 
 const endIcon = L.divIcon({
     className: 'custom-marker',
-    html: '<div class="marker-end">✕</div>',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14]
+    html: '<div style="width:24px; height:24px; background:#ff4444; border:3px solid #fff; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:bold; font-size:16px;">✕</div>',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
 });
 
 // Calculate combined Air Quality Index from multiple pollutants
 function calculateAQI(pm10, pm25, no2) {
-    // Simple combined index: weighted average
-    // PM2.5 is considered more harmful, so weighted higher
     const pm10Index = pm10 || 0;
-    const pm25Index = (pm25 || 0) * 1.5;  // PM2.5 weighted 1.5x
-    const no2Index = (no2 || 0) * 0.8;    // NO2 weighted 0.8x
-    
-    return (pm10Index + pm25Index + no2Index) / 3.3;  // Normalize
+    const pm25Index = (pm25 || 0) * 1.5;
+    const no2Index = (no2 || 0) * 0.8;
+    return (pm10Index + pm25Index + no2Index) / 3.3;
 }
 
 // Get pollution color based on combined AQI
 function getPollutionColor(aqi) {
-    if (aqi <= 50) return '#00ff00';      // Good - green
-    if (aqi <= 100) return '#ffff00';     // Moderate - yellow
-    if (aqi <= 150) return '#ff8800';     // Unhealthy - orange
-    return '#ff0000';                      // Very unhealthy - red
-}
-
-// Get pollution color from individual values
-function getPollutionColorFromValues(pm10, pm25, no2) {
-    const aqi = calculateAQI(pm10, pm25, no2);
-    return getPollutionColor(aqi);
+    if (aqi <= 50) return '#00ff00';
+    if (aqi <= 100) return '#ffff00';
+    if (aqi <= 150) return '#ff8800';
+    return '#ff0000';
 }
 
 // Set start point from map click
@@ -83,12 +74,14 @@ map.on('click', function(e) {
         updateStartMarker(e.latlng.lat, e.latlng.lng);
         clickMode = null;
         map.getContainer().style.cursor = '';
+        hideMessage();
     } else if (clickMode === 'end') {
         document.getElementById('end-lat').value = e.latlng.lat.toFixed(4);
         document.getElementById('end-lon').value = e.latlng.lng.toFixed(4);
         updateEndMarker(e.latlng.lat, e.latlng.lng);
         clickMode = null;
         map.getContainer().style.cursor = '';
+        hideMessage();
     }
 });
 
@@ -98,7 +91,7 @@ function updateStartMarker(lat, lon) {
         markersLayer.removeLayer(startMarker);
     }
     startMarker = L.marker([lat, lon], {icon: startIcon})
-        .bindPopup('<strong>Start Point</strong><br>Click "Pick from map" to change')
+        .bindPopup('<strong>Start Point</strong>')
         .addTo(markersLayer);
 }
 
@@ -108,7 +101,7 @@ function updateEndMarker(lat, lon) {
         markersLayer.removeLayer(endMarker);
     }
     endMarker = L.marker([lat, lon], {icon: endIcon})
-        .bindPopup('<strong>End Point</strong><br>Click "Pick from map" to change')
+        .bindPopup('<strong>End Point</strong>')
         .addTo(markersLayer);
 }
 
@@ -125,9 +118,17 @@ function showMessage(message, type) {
     resultsDiv.innerHTML = `<div class="${className}">${message}</div>`;
 }
 
-// Clear route from map
+// Hide message
+function hideMessage() {
+    document.getElementById('results-section').style.display = 'none';
+}
+
+// Clear route from map (including start/end markers)
 function clearRoute() {
     routeLayer.clearLayers();
+    markersLayer.clearLayers();
+    startMarker = null;
+    endMarker = null;
     document.getElementById('results-section').style.display = 'none';
 }
 
@@ -144,26 +145,23 @@ async function calculateRoute() {
     const endLon = parseFloat(document.getElementById('end-lon').value);
     const alpha = parseFloat(document.getElementById('alpha').value);
     
-    // Get sensor types
     const sensorTypes = [];
     if (document.getElementById('sensor-fixed').checked) sensorTypes.push('fixed');
     if (document.getElementById('sensor-mobile').checked) sensorTypes.push('mobile');
     
-    // Validate
     if (isNaN(startLat) || isNaN(startLon) || isNaN(endLat) || isNaN(endLon)) {
         showMessage('Please enter valid coordinates', 'error');
         return;
     }
     
-    // Show loading
+    // Show loading with correct text
+    document.getElementById('loading-text').textContent = 'Calculating route...';
     document.getElementById('loading').style.display = 'flex';
     
     try {
         const response = await fetch(`${API_URL}/route/`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 start: { lat: startLat, lon: startLon },
                 goal: { lat: endLat, lon: endLon },
@@ -177,20 +175,15 @@ async function calculateRoute() {
         if (!response.ok) {
             const errorMsg = data.detail || 'Route calculation failed';
             if (errorMsg.includes('No pollution data') || errorMsg.includes('No path found')) {
-                showMessage('Not enough pollution data in the selected area to calculate a route. Try a different area or check if sensors are active.', 'error');
+                showMessage('Not enough pollution data in the selected area to calculate a route.', 'error');
             } else {
                 showMessage(`Error: ${errorMsg}`, 'error');
             }
             return;
         }
         
-        if (!data.route || !data.route.properties || !data.waypoints) {
+        if (!data.route || !data.route.properties || !data.waypoints || data.waypoints.length === 0) {
             showMessage('Not enough pollution data in the selected area to calculate a route.', 'error');
-            return;
-        }
-        
-        if (data.waypoints.length === 0) {
-            showMessage('Could not calculate a route. No pollution data found in the selected area.', 'error');
             return;
         }
         
@@ -198,59 +191,42 @@ async function calculateRoute() {
         
     } catch (error) {
         console.error('Route error:', error);
-        if (error.message === 'Failed to fetch') {
-            showMessage('Cannot connect to server. Please check your connection.', 'error');
-        } else {
-            showMessage('An error occurred while calculating the route. Please try again.', 'error');
-        }
+        showMessage('Cannot connect to server. Please check your connection.', 'error');
     } finally {
         document.getElementById('loading').style.display = 'none';
     }
 }
 
+
 // Display route on map
 function displayRoute(data) {
-    // Clear previous route
     routeLayer.clearLayers();
     
     const route = data.route;
     const waypoints = data.waypoints;
     const props = route.properties;
     
-    // Draw route line with gradient based on combined pollution
+    // Draw route line
     if (waypoints.length > 1) {
         for (let i = 0; i < waypoints.length - 1; i++) {
             const start = waypoints[i];
             const end = waypoints[i + 1];
-            
-            // Use combined AQI for color
-            const aqi = calculateAQI(start.pm10, start.pm25, start.no2);
+            const aqi = calculateAQI(start.pollution_level, 0, 0);
             const color = getPollutionColor(aqi);
             
-            L.polyline(
-                [[start.lat, start.lon], [end.lat, end.lon]],
-                {
-                    color: color,
-                    weight: 6,
-                    opacity: 0.8
-                }
-            ).addTo(routeLayer);
+            L.polyline([[start.lat, start.lon], [end.lat, end.lon]], {
+                color: color,
+                weight: 6,
+                opacity: 0.8
+            }).addTo(routeLayer);
         }
-    } else if (route.geometry.coordinates.length > 0) {
-        const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-        L.polyline(coords, {
-            color: '#00d9ff',
-            weight: 6,
-            opacity: 0.8
-        }).addTo(routeLayer);
     }
     
-    // Add waypoint markers (pollution circles only for intermediate points)
+    // Add waypoint markers (skip first and last)
     waypoints.forEach((wp, index) => {
-        // Skip first and last - they get special markers
         if (index === 0 || index === waypoints.length - 1) return;
         
-        const aqi = calculateAQI(wp.pm10, wp.pm25, wp.no2);
+        const aqi = calculateAQI(wp.pollution_level, 0, 0);
         const color = getPollutionColor(aqi);
         
         L.circleMarker([wp.lat, wp.lon], {
@@ -260,16 +236,7 @@ function displayRoute(data) {
             weight: 2,
             fillOpacity: 0.8
         })
-        .bindPopup(`
-            <strong>Waypoint ${index + 1}</strong><br>
-            Lat: ${wp.lat.toFixed(4)}<br>
-            Lon: ${wp.lon.toFixed(4)}<br>
-            <hr style="margin: 5px 0;">
-            PM10: ${(wp.pm10 || 0).toFixed(1)} µg/m³<br>
-            PM2.5: ${(wp.pm25 || 0).toFixed(1)} µg/m³<br>
-            NO2: ${(wp.no2 || 0).toFixed(1)} µg/m³<br>
-            <strong>AQI: ${aqi.toFixed(0)}</strong>
-        `)
+        .bindPopup(`<strong>Waypoint ${index}</strong><br>PM10: ${(wp.pollution_level || 0).toFixed(1)} µg/m³`)
         .addTo(routeLayer);
     });
     
@@ -279,15 +246,12 @@ function displayRoute(data) {
         updateEndMarker(waypoints[waypoints.length - 1].lat, waypoints[waypoints.length - 1].lon);
     }
     
-    // Fit map to route
+    // Fit map
     if (route.geometry.coordinates.length > 0) {
-        const bounds = L.latLngBounds(
-            route.geometry.coordinates.map(c => [c[1], c[0]])
-        );
+        const bounds = L.latLngBounds(route.geometry.coordinates.map(c => [c[1], c[0]]));
         map.fitBounds(bounds, { padding: [50, 50] });
     }
     
-    // Display results with all pollutants
     displayResults(props);
 }
 
@@ -306,14 +270,6 @@ function displayResults(props) {
         <div class="result-item">
             <span class="result-label">Avg PM10</span>
             <span class="result-value">${props.avg_pollution_pm10.toFixed(1)} µg/m³</span>
-        </div>
-        <div class="result-item">
-            <span class="result-label">Avg PM2.5</span>
-            <span class="result-value">${(props.avg_pollution_pm25 || 0).toFixed(1)} µg/m³</span>
-        </div>
-        <div class="result-item">
-            <span class="result-label">Avg NO2</span>
-            <span class="result-value">${(props.avg_pollution_no2 || 0).toFixed(1)} µg/m³</span>
         </div>
         <div class="result-item">
             <span class="result-label">Max PM10</span>
@@ -345,14 +301,14 @@ async function queryPollutionData() {
         return;
     }
     
+    // Show loading with correct text
+    document.getElementById('loading-text').textContent = 'Fetching pollution data...';
     document.getElementById('loading').style.display = 'flex';
     
     try {
         const response = await fetch(`${API_URL}/results/`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 latitude: lat,
                 longitude: lon,
@@ -366,7 +322,7 @@ async function queryPollutionData() {
         if (!response.ok) {
             const errorMsg = data.detail || 'Query failed';
             if (errorMsg.includes('No data found') || errorMsg.includes('Timeout')) {
-                showMessage('No pollution measurements found in the selected area. Try a larger radius or different location.', 'error');
+                showMessage('No pollution measurements found in the selected area.', 'error');
             } else {
                 showMessage(`Error: ${errorMsg}`, 'error');
             }
@@ -374,7 +330,7 @@ async function queryPollutionData() {
         }
         
         if (!data.data || data.data.length === 0) {
-            showMessage('No pollution measurements found in the selected area. Try a larger radius or different location.', 'error');
+            showMessage('No pollution measurements found in the selected area.', 'error');
             return;
         }
         
@@ -382,11 +338,7 @@ async function queryPollutionData() {
         
     } catch (error) {
         console.error('Query error:', error);
-        if (error.message === 'Failed to fetch') {
-            showMessage('Cannot connect to server. Please check your connection.', 'error');
-        } else {
-            showMessage('An error occurred while querying data. Please try again.', 'error');
-        }
+        showMessage('Cannot connect to server. Please check your connection.', 'error');
     } finally {
         document.getElementById('loading').style.display = 'none';
     }
@@ -394,10 +346,8 @@ async function queryPollutionData() {
 
 // Display pollution data on map
 function displayPollutionData(readings, centerLat, centerLon, radius) {
-    // Clear previous pollution markers
     pollutionLayer.clearLayers();
     
-    // Draw query circle
     L.circle([centerLat, centerLon], {
         radius: radius * 1000,
         color: '#00d9ff',
@@ -406,9 +356,7 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
         weight: 2
     }).addTo(pollutionLayer);
     
-    // Add pollution markers
     readings.forEach(reading => {
-        // Reading format: [sensor_id, timestamp, lat, lon, pm10, pm25, no2]
         const sensorId = reading[0];
         const timestamp = reading[1];
         const lat = reading[2];
@@ -417,7 +365,6 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
         const pm25 = reading[5];
         const no2 = reading[6];
         
-        // Calculate combined AQI
         const aqi = calculateAQI(pm10, pm25, no2);
         const color = getPollutionColor(aqi);
         
@@ -434,13 +381,11 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
             <hr style="margin: 5px 0;">
             PM10: ${pm10.toFixed(1)} µg/m³<br>
             PM2.5: ${pm25.toFixed(1)} µg/m³<br>
-            NO2: ${no2.toFixed(1)} µg/m³<br>
-            <strong>AQI: ${aqi.toFixed(0)}</strong>
+            NO2: ${no2.toFixed(1)} µg/m³
         `)
         .addTo(pollutionLayer);
     });
     
-    // Fit map to show all markers
     if (readings.length > 0) {
         const bounds = L.latLngBounds(readings.map(r => [r[2], r[3]]));
         map.fitBounds(bounds, { padding: [50, 50] });
@@ -448,18 +393,3 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
     
     showMessage(`Found ${readings.length} pollution readings`, 'success');
 }
-
-// Initialize markers from input values
-document.addEventListener('DOMContentLoaded', function() {
-    const startLat = parseFloat(document.getElementById('start-lat').value);
-    const startLon = parseFloat(document.getElementById('start-lon').value);
-    const endLat = parseFloat(document.getElementById('end-lat').value);
-    const endLon = parseFloat(document.getElementById('end-lon').value);
-    
-    if (!isNaN(startLat) && !isNaN(startLon)) {
-        updateStartMarker(startLat, startLon);
-    }
-    if (!isNaN(endLat) && !isNaN(endLon)) {
-        updateEndMarker(endLat, endLon);
-    }
-});

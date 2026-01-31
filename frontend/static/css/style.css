@@ -301,22 +301,33 @@ input[type="range"] {
     font-size: 0.85rem;
 }
 
-/* Clear buttons */
+/* Clear buttons - styled to match theme */
 .btn-clear {
     padding: 8px 15px;
-    font-size: 0.8rem;
-    background: transparent;
-    color: #ff6666;
-    border: 1px solid #ff6666;
+    font-size: 0.85rem;
+    background: rgba(255, 80, 80, 0.15);
+    color: #ff8080;
+    border: 1px solid rgba(255, 80, 80, 0.4);
     border-radius: 5px;
     cursor: pointer;
-    margin-top: 10px;
+    margin-top: 8px;
     width: 100%;
     transition: all 0.2s;
 }
 
 .btn-clear:hover {
-    background: rgba(255, 102, 102, 0.2);
+    background: rgba(255, 80, 80, 0.3);
+    border-color: #ff8080;
+}
+
+/* Info message */
+.info-message {
+    background: rgba(0, 217, 255, 0.15);
+    border: 1px solid rgba(0, 217, 255, 0.4);
+    color: #00d9ff;
+    padding: 10px;
+    border-radius: 5px;
+    font-size: 0.85rem;
 }
 
 /* Button group for primary + clear */
