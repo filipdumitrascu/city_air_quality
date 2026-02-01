@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 cache_manager = None
 data_loader = None
 
-# Fast API
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize components on startup"""
@@ -40,7 +40,6 @@ async def lifespan(app: FastAPI):
     
     logger.info("Starting Routing Service...")
     
-    # Initialize components
     cache_manager = CacheManager()
     data_loader = PollutionDataLoader()
     
@@ -57,7 +56,6 @@ app = FastAPI(
 )
 
 
-# Health check endpoints
 @app.get("/", tags=["health"])
 async def root():
     """Root endpoint"""
@@ -72,7 +70,6 @@ async def health_check():
     """Health check endpoint"""
     redis_ok = cache_manager.is_connected() if cache_manager else False
     
-    # Test database connection
     db_ok = False
     try:
         await data_loader.fetch_pollution_data(44.43, 26.10, 1.0, ["fixed"])
@@ -88,7 +85,6 @@ async def health_check():
     )
 
 
-# Endpoint route
 @app.post("/route", response_model=RouteResponse, tags=["routing"])
 async def calculate_route(request: RouteRequest):
     """
@@ -98,24 +94,11 @@ async def calculate_route(request: RouteRequest):
     - **start**: Starting coordinate (lat, lon)
     - **goal**: Destination coordinate (lat, lon)
     - **alpha**: Pollution weight (0.0 = fastest route, 1.0 = cleanest route)
-    - **sensor_types**: Sensor types to use:
-        - `["fixed"]` - Only fixed sensors
-        - `["mobile"]` - Only mobile sensors
-        - `["fixed", "mobile"]` - All sensors
+    - **sensor_types**: Sensor types to use
     
     **Returns:**
-    - GeoJSON route with statistics
+    - GeoJSON route with all pollution statistics (PM10, PM2.5, NO2, AQI)
     - List of waypoints with pollution levels
-    
-    **Example:**
-```json
-    {
-      "start": {"lat": 44.4268, "lon": 26.1025},
-      "goal": {"lat": 44.4350, "lon": 26.1100},
-      "alpha": 0.7,
-      "sensor_types": ["fixed", "mobile"]
-    }
-```
     """
     start_time = time.time()
     
@@ -176,7 +159,7 @@ async def calculate_route(request: RouteRequest):
                 detail="No path found between start and goal"
             )
         
-        # Calculate stats
+        # Calculate stats with all pollutants
         stats = calculate_route_stats(path, graph.pollution_data)
         calculation_time = round((time.time() - start_time) * 1000, 2)
         
@@ -184,17 +167,20 @@ async def calculate_route(request: RouteRequest):
         # GeoJSON coordinates are [lon, lat] (NOT [lat, lon]!)
         geojson_coords = [[node[1], node[0]] for node in path]
         
-        # Waypoints with pollution
-        waypoints = [
-            RouteNode(
+        # Waypoints with all pollution values
+        waypoints = []
+        for node in path:
+            pollution = graph.get_pollution(node)
+            waypoints.append(RouteNode(
                 lat=node[0],
                 lon=node[1],
-                pollution_level=graph.get_pollution(node)
-            )
-            for node in path
-        ]
+                pm10=pollution.get('pm10', 0),
+                pm25=pollution.get('pm25', 0),
+                no2=pollution.get('no2', 0),
+                aqi=pollution.get('aqi', 0)
+            ))
         
-        # Build GeoJSON Feature
+        # Build GeoJSON Feature with all pollution metrics
         geojson_feature = GeoJSONFeature(
             type="Feature",
             geometry=GeoJSONGeometry(
@@ -203,8 +189,14 @@ async def calculate_route(request: RouteRequest):
             ),
             properties=GeoJSONProperties(
                 distance_km=stats["total_distance_km"],
-                avg_pollution_pm10=stats["avg_pollution"],
-                max_pollution_pm10=stats["max_pollution"],
+                avg_pollution_pm10=stats["avg_pm10"],
+                max_pollution_pm10=stats["max_pm10"],
+                avg_pollution_pm25=stats["avg_pm25"],
+                max_pollution_pm25=stats["max_pm25"],
+                avg_pollution_no2=stats["avg_no2"],
+                max_pollution_no2=stats["max_no2"],
+                avg_aqi=stats["avg_aqi"],
+                max_aqi=stats["max_aqi"],
                 calculation_time_ms=calculation_time,
                 sensor_types_used=request.sensor_types,
                 nodes_evaluated=pathfinder.nodes_evaluated,
@@ -213,14 +205,14 @@ async def calculate_route(request: RouteRequest):
         )
         
         response_data = {
-            "route": geojson_feature.model_dump(),  # ← FIX
-            "waypoints": [w.model_dump() for w in waypoints]  # ← FIX
+            "route": geojson_feature.model_dump(),
+            "waypoints": [w.model_dump() for w in waypoints]
         }
         
         # Cache result
         cache_manager.cache_route(cache_key, response_data)
         
-        logger.info(f"Route calculated: {len(path)} waypoints, {stats['total_distance_km']}km, {calculation_time}ms")
+        logger.info(f"Route calculated: {len(path)} waypoints, {stats['total_distance_km']}km, AQI={stats['avg_aqi']}, {calculation_time}ms")
         
         return RouteResponse(**response_data)
     
@@ -231,7 +223,6 @@ async def calculate_route(request: RouteRequest):
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
-# Cache management endpoints
 @app.get("/cache/stats", tags=["cache"])
 async def cache_stats():
     """Get Redis cache statistics"""
@@ -240,10 +231,7 @@ async def cache_stats():
     
     try:
         info = cache_manager.redis_client.info("stats")
-        keyspace = cache_manager.redis_client.info("keyspace")
         memory = cache_manager.redis_client.info("memory")
-        
-        # Count only route:* keys
         route_keys = len(cache_manager.redis_client.keys("route:*"))
         
         return {
@@ -271,7 +259,7 @@ async def clear_cache():
         keys = cache_manager.redis_client.keys("route:*")
         if keys:
             cache_manager.redis_client.delete(*keys)
-            logger.info(f" Cleared {len(keys)} cached routes")
+            logger.info(f"Cleared {len(keys)} cached routes")
             return {"cleared": len(keys), "message": f"Cleared {len(keys)} cached routes"}
         return {"cleared": 0, "message": "No cached routes to clear"}
     except Exception as e:

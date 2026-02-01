@@ -22,10 +22,13 @@ class RouteRequest(BaseModel):
     )
 
 class RouteNode(BaseModel):
-    """Single node in the route"""
+    """Single node in the route with all pollution values"""
     lat: float
     lon: float
-    pollution_level: Optional[float] = None
+    pm10: Optional[float] = None
+    pm25: Optional[float] = None
+    no2: Optional[float] = None
+    aqi: Optional[float] = None  # Combined Air Quality Index
 
 class GeoJSONGeometry(BaseModel):
     """GeoJSON LineString geometry"""
@@ -33,10 +36,21 @@ class GeoJSONGeometry(BaseModel):
     coordinates: List[List[float]]  # [[lon, lat], ...]
 
 class GeoJSONProperties(BaseModel):
-    """GeoJSON properties"""
+    """GeoJSON properties with all pollution metrics"""
     distance_km: float
+    # PM10
     avg_pollution_pm10: float
     max_pollution_pm10: float
+    # PM2.5
+    avg_pollution_pm25: float
+    max_pollution_pm25: float
+    # NO2
+    avg_pollution_no2: float
+    max_pollution_no2: float
+    # Combined AQI
+    avg_aqi: float
+    max_aqi: float
+    # Metadata
     calculation_time_ms: float
     sensor_types_used: List[str]
     nodes_evaluated: int

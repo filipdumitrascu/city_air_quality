@@ -14,61 +14,80 @@ class PollutionGraph:
     """
     
     def __init__(self, alpha: float = 0.5):
-        """
-        Initialize graph
-        
-        Args:
-            alpha: Weight for pollution (0=ignore pollution, 1=only pollution)
-        """
         self.config = get_config()
         self.alpha = alpha
         self.nodes: Set[Tuple[float, float]] = set()
-        self.edges: Dict[Tuple[float, float], List[Tuple[float, float, float]]] = {}
-        self.pollution_data: Dict[Tuple[float, float], float] = {}
-        self.sensor_types: Dict[Tuple[float, float], str] = {}  # Track sensor types
+        self.edges: Dict[Tuple[float, float], List[Tuple[Tuple[float, float], float, float]]] = {}
+        
+        # Store all pollution data per node
+        self.pollution_data: Dict[Tuple[float, float], Dict[str, float]] = {}
+        self.sensor_types: Dict[Tuple[float, float], str] = {}
         self.grid_resolution = self.config["grid_resolution"]
     
-    def add_pollution_data(self, pollution_readings: List[Dict]):
+    def calculate_aqi(self, pm10: float, pm25: float, no2: float) -> float:
         """
-        Add pollution data to graph
+        Calculate combined Air Quality Index.
+        PM2.5 is weighted higher as it's more harmful to health.
+        """
+        pm10_idx = pm10 if pm10 else 0
+        pm25_idx = (pm25 if pm25 else 0) * 1.5  # PM2.5 weighted 1.5x
+        no2_idx = (no2 if no2 else 0) * 0.8     # NO2 weighted 0.8x
+        
+        return (pm10_idx + pm25_idx + no2_idx) / 3.3
+    
+    def add_pollution_data(self, pollution_readings: List):
+        """
+        Add pollution data to graph.
         
         Args:
             pollution_readings: List of readings from Database Service
-                               Schema: [sensor_id, timestamp, latitude, longitude, pm10, pm25, no2]
+                               Schema: [sensor_id, timestamp, lat, lon, pm10, pm25, no2]
         """
         logger.info(f"Adding {len(pollution_readings)} pollution readings to graph")
         
         for reading in pollution_readings:
             try:
-                # QuestDB returns arrays: [sensor_id, timestamp, lat, lon, pm10, ...]
                 if isinstance(reading, (list, tuple)):
                     sensor_id = reading[0]
                     lat = float(reading[2])
                     lon = float(reading[3])
-                    pollution = float(reading[4]) if len(reading) > 4 else 50.0  # pm10
+                    pm10 = float(reading[4]) if len(reading) > 4 and reading[4] is not None else 0.0
+                    pm25 = float(reading[5]) if len(reading) > 5 and reading[5] is not None else 0.0
+                    no2 = float(reading[6]) if len(reading) > 6 and reading[6] is not None else 0.0
                     
-                    # Determine sensor type from sensor_id prefix
                     sensor_type = "mobile" if sensor_id.startswith("M") else "fixed"
                 else:
-                    # Fallback for dict format
                     lat = float(reading.get("latitude", 0))
                     lon = float(reading.get("longitude", 0))
-                    pollution = float(reading.get("pm10", 50.0))
+                    pm10 = float(reading.get("pm10", 0))
+                    pm25 = float(reading.get("pm25", 0))
+                    no2 = float(reading.get("no2", 0))
                     sensor_type = reading.get("sensor_type", "unknown")
                 
                 # Snap to grid
                 grid_lat = round(lat / self.grid_resolution) * self.grid_resolution
                 grid_lon = round(lon / self.grid_resolution) * self.grid_resolution
-                
                 grid_point = (grid_lat, grid_lon)
+                
+                # Calculate AQI
+                aqi = self.calculate_aqi(pm10, pm25, no2)
                 
                 # Average if multiple readings at same grid point
                 if grid_point in self.pollution_data:
-                    self.pollution_data[grid_point] = (
-                        self.pollution_data[grid_point] + pollution
-                    ) / 2
+                    existing = self.pollution_data[grid_point]
+                    self.pollution_data[grid_point] = {
+                        'pm10': (existing['pm10'] + pm10) / 2,
+                        'pm25': (existing['pm25'] + pm25) / 2,
+                        'no2': (existing['no2'] + no2) / 2,
+                        'aqi': (existing['aqi'] + aqi) / 2
+                    }
                 else:
-                    self.pollution_data[grid_point] = pollution
+                    self.pollution_data[grid_point] = {
+                        'pm10': pm10,
+                        'pm25': pm25,
+                        'no2': no2,
+                        'aqi': aqi
+                    }
                     self.sensor_types[grid_point] = sensor_type
                 
                 self.nodes.add(grid_point)
@@ -83,14 +102,15 @@ class PollutionGraph:
         """Build edges connecting nearby nodes"""
         logger.info("Building graph edges...")
         
-        # Normalize pollution values
+        # Get AQI values for normalization
         if self.pollution_data:
-            min_pollution = min(self.pollution_data.values())
-            max_pollution = max(self.pollution_data.values())
-            pollution_range = max_pollution - min_pollution or 1
+            aqi_values = [p['aqi'] for p in self.pollution_data.values()]
+            min_aqi = min(aqi_values)
+            max_aqi = max(aqi_values)
+            aqi_range = max_aqi - min_aqi or 1
         else:
-            min_pollution = 0
-            pollution_range = 1
+            min_aqi = 0
+            aqi_range = 1
         
         # For each node, connect to nearby nodes
         for node in self.nodes:
@@ -103,15 +123,16 @@ class PollutionGraph:
                 distance = self._haversine_distance(node, other)
                 
                 # Only connect if within reasonable distance
-                if distance <= self.grid_resolution * 111 * 1.5:  # ~1.5 grid cells
-                    # Get pollution at destination
-                    pollution = self.pollution_data.get(other, 50.0)
-                    normalized_pollution = (pollution - min_pollution) / pollution_range
+                if distance <= self.grid_resolution * 111 * 1.5:
+                    # Get AQI at destination for edge weight
+                    other_data = self.pollution_data.get(other, {'aqi': 50})
+                    aqi = other_data['aqi']
+                    normalized_aqi = (aqi - min_aqi) / aqi_range
                     
-                    # Weight = distance * (1 + alpha * pollution)
-                    weight = distance * (1 + self.alpha * normalized_pollution)
+                    # Weight = distance * (1 + alpha * aqi)
+                    weight = distance * (1 + self.alpha * normalized_aqi)
                     
-                    neighbors.append((other, weight, pollution))
+                    neighbors.append((other, weight, aqi))
             
             self.edges[node] = neighbors
         
@@ -133,12 +154,12 @@ class PollutionGraph:
         return nearest
     
     def get_neighbors(self, node: Tuple[float, float]) -> List[Tuple[Tuple[float, float], float, float]]:
-        """Get neighbors of a node with (neighbor, weight, pollution)"""
+        """Get neighbors of a node with (neighbor, weight, aqi)"""
         return self.edges.get(node, [])
     
-    def get_pollution(self, node: Tuple[float, float]) -> float:
-        """Get pollution level at node"""
-        return self.pollution_data.get(node, 50.0)
+    def get_pollution(self, node: Tuple[float, float]) -> Dict[str, float]:
+        """Get all pollution values at node"""
+        return self.pollution_data.get(node, {'pm10': 0, 'pm25': 0, 'no2': 0, 'aqi': 0})
     
     @staticmethod
     def _haversine_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:

@@ -206,12 +206,12 @@ function displayRoute(data) {
     const waypoints = data.waypoints;
     const props = route.properties;
     
-    // Draw route line
+    // Draw route line with color based on AQI
     if (waypoints.length > 1) {
         for (let i = 0; i < waypoints.length - 1; i++) {
             const start = waypoints[i];
             const end = waypoints[i + 1];
-            const aqi = calculateAQI(start.pollution_level, 0, 0);
+            const aqi = start.aqi || calculateAQI(start.pm10, start.pm25, start.no2);
             const color = getPollutionColor(aqi);
             
             L.polyline([[start.lat, start.lon], [end.lat, end.lon]], {
@@ -226,7 +226,7 @@ function displayRoute(data) {
     waypoints.forEach((wp, index) => {
         if (index === 0 || index === waypoints.length - 1) return;
         
-        const aqi = calculateAQI(wp.pollution_level, 0, 0);
+        const aqi = wp.aqi || calculateAQI(wp.pm10, wp.pm25, wp.no2);
         const color = getPollutionColor(aqi);
         
         L.circleMarker([wp.lat, wp.lon], {
@@ -236,7 +236,14 @@ function displayRoute(data) {
             weight: 2,
             fillOpacity: 0.8
         })
-        .bindPopup(`<strong>Waypoint ${index}</strong><br>PM10: ${(wp.pollution_level || 0).toFixed(1)} µg/m³`)
+        .bindPopup(`
+            <strong>Waypoint ${index}</strong><br>
+            <hr style="margin: 5px 0;">
+            PM10: ${(wp.pm10 || 0).toFixed(1)} µg/m³<br>
+            PM2.5: ${(wp.pm25 || 0).toFixed(1)} µg/m³<br>
+            NO2: ${(wp.no2 || 0).toFixed(1)} µg/m³<br>
+            <strong>AQI: ${(wp.aqi || 0).toFixed(0)}</strong>
+        `)
         .addTo(routeLayer);
     });
     
@@ -255,7 +262,7 @@ function displayRoute(data) {
     displayResults(props);
 }
 
-// Display route results
+// Display route results with all pollutants
 function displayResults(props) {
     const resultsSection = document.getElementById('results-section');
     const resultsDiv = document.getElementById('route-results');
@@ -268,12 +275,20 @@ function displayResults(props) {
             <span class="result-value">${props.distance_km.toFixed(2)} km</span>
         </div>
         <div class="result-item">
+            <span class="result-label">Avg AQI</span>
+            <span class="result-value">${(props.avg_aqi || 0).toFixed(0)}</span>
+        </div>
+        <div class="result-item">
             <span class="result-label">Avg PM10</span>
             <span class="result-value">${props.avg_pollution_pm10.toFixed(1)} µg/m³</span>
         </div>
         <div class="result-item">
-            <span class="result-label">Max PM10</span>
-            <span class="result-value">${props.max_pollution_pm10.toFixed(1)} µg/m³</span>
+            <span class="result-label">Avg PM2.5</span>
+            <span class="result-value">${(props.avg_pollution_pm25 || 0).toFixed(1)} µg/m³</span>
+        </div>
+        <div class="result-item">
+            <span class="result-label">Avg NO2</span>
+            <span class="result-value">${(props.avg_pollution_no2 || 0).toFixed(1)} µg/m³</span>
         </div>
         <div class="result-item">
             <span class="result-label">Calculation Time</span>
