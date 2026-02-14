@@ -3,15 +3,27 @@ import logging
 import math
 from typing import List, Tuple, Optional, Dict
 from .graph_builder import PollutionGraph
+from .utils import get_heuristic
 
 logger = logging.getLogger(__name__)
 
 class AStarPathfinder:
     """A* pathfinding algorithm for pollution-aware routing"""
     
-    def __init__(self, graph: PollutionGraph):
+    def __init__(self, graph: PollutionGraph, heuristic: str = "haversine"):
+        """
+        Initialize pathfinder with graph and heuristic.
+        
+        Args:
+            graph: PollutionGraph with nodes and edges
+            heuristic: Heuristic function name 
+                       ('haversine', 'euclidean', 'manhattan', 'diagonal', 'octile')
+        """
         self.graph = graph
         self.nodes_evaluated = 0
+        self.heuristic_name = heuristic
+        self.heuristic_func = get_heuristic(heuristic)
+        logger.info(f"Pathfinder initialized with heuristic: {heuristic}")
     
     def find_path(
         self,
@@ -28,13 +40,13 @@ class AStarPathfinder:
         Returns:
             List of (lat, lon) waypoints or None if no path found
         """
-        logger.info(f"Finding path from {start} to {goal}")
+        logger.info(f"Finding path from {start} to {goal} using {self.heuristic_name} heuristic")
         
         # Snap to nearest graph nodes
         start_node = self.graph.get_nearest_node(start[0], start[1])
         goal_node = self.graph.get_nearest_node(goal[0], goal[1])
         
-        logger.info(f"Snapped to: {start_node} → {goal_node}")
+        logger.info(f"Snapped to: {start_node} -> {goal_node}")
         
         # Priority queue: (f_score, node)
         open_set = [(0, start_node)]
@@ -60,7 +72,7 @@ class AStarPathfinder:
             
             # Goal reached
             if current == goal_node:
-                logger.info(f"Path found! Evaluated {self.nodes_evaluated} nodes")
+                logger.info(f"Path found! Evaluated {self.nodes_evaluated} nodes with {self.heuristic_name}")
                 return self._reconstruct_path(came_from, current)
             
             # Explore neighbors
@@ -81,7 +93,7 @@ class AStarPathfinder:
     
     def _heuristic(self, node: Tuple[float, float], goal: Tuple[float, float]) -> float:
         """
-        Heuristic function for A* (Haversine distance)
+        Heuristic function for A* - uses configured heuristic
         
         Args:
             node: Current node
@@ -90,7 +102,7 @@ class AStarPathfinder:
         Returns:
             Estimated cost to goal
         """
-        return PollutionGraph._haversine_distance(node, goal)
+        return self.heuristic_func(node, goal)
     
     def _reconstruct_path(
         self,
@@ -101,7 +113,7 @@ class AStarPathfinder:
         Reconstruct path from came_from chain
         
         Args:
-            came_from: Dictionary of node → previous node
+            came_from: Dictionary of node -> previous node
             current: Goal node
         
         Returns:
