@@ -17,6 +17,20 @@ if ! kubectl cluster-info &> /dev/null; then
     exit 1
 fi
 
+# Kill any existing port-forwards
+echo "Cleaning up existing port-forwards..."
+pkill -f "kubectl port-forward" 2>/dev/null || true
+sleep 2
+
+# Free up ports if still in use
+for port in 8812 9000; do
+    if lsof -i :$port > /dev/null 2>&1; then
+        echo "Freeing port $port..."
+        fuser -k $port/tcp 2>/dev/null || true
+        sleep 1
+    fi
+done
+
 cd ../../deploy
 
 # Create secrets if not exists
