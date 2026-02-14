@@ -14,9 +14,9 @@ def get_config() -> Dict:
         "database_service_url": os.getenv("DATABASE_SERVICE_URL", "http://database-service:8000"),
         
         # Routing parameters
-        # Grid resolution: 0.002 = ~220m
-        # Smaller = more precise routes, but slower calculation
-        "grid_resolution": float(os.getenv("GRID_RESOLUTION", 0.002)),
+        # Grid resolution: 0.005 = ~500m
+        # Smaller = more precise routes, but slower calculation and less nodes next to start and end
+        "grid_resolution": float(os.getenv("GRID_RESOLUTION", 0.005)),
         "pollution_weight_multiplier": float(os.getenv("POLLUTION_WEIGHT", 10.0)),
         
         # Bucharest bounds (for grid generation)
