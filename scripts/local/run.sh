@@ -143,12 +143,19 @@ for i in {1..15}; do
     sleep 2
 done
 
-# Optional: Import sample data
-EXCEL_FILE="../backend/config/questdb/cityairq_sensor_data.xlsx"
-if [ -f "$EXCEL_FILE" ]; then
+# Optional: Import sample data (Fixed sensors)
+EXCEL_FILE_FIXED="../backend/config/questdb/xlsxs/cityairq_sensor_data_fixed.xlsx"
+if [ -f "$EXCEL_FILE_FIXED" ]; then
     echo ""
-    echo -n "Importing sample data..."
-    python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE" 2>/dev/null && echo " done" || echo " skipped"
+    echo -n "Importing fixed sensors data..."
+    python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_FIXED" 2>/dev/null && echo " done" || echo " skipped"
+fi
+
+# Optional: Import sample data (Mobile sensors)
+EXCEL_FILE_MOBILE="../backend/config/questdb//xlsxs/cityairq_sensor_data_mobile.xlsx"
+if [ -f "$EXCEL_FILE_MOBILE" ]; then
+    echo -n "Importing mobile sensors data..."
+    python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_MOBILE" 2>/dev/null && echo " done" || echo " skipped"
 fi
 
 echo ""

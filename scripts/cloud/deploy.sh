@@ -100,13 +100,22 @@ except Exception as e:
     sys.exit(1)
 PYTHON_SCRIPT
 
-# Import sample data
-EXCEL_FILE="../backend/config/questdb/cityairq_sensor_data.xlsx"
-if [ -f "$EXCEL_FILE" ]; then
-    echo -n "Importing sample data..."
-    python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE" 2>/dev/null && echo " done" || echo " skipped"
+# Import sample data (Fixed sensors)
+EXCEL_FILE_FIXED="../backend/config/questdb/xlsxs/cityairq_sensor_data_fixed.xlsx"
+if [ -f "$EXCEL_FILE_FIXED" ]; then
+    echo -n "Importing fixed sensors data..."
+    python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_FIXED" 2>/dev/null && echo " done" || echo " skipped"
 else
-    echo "Warning: Excel file not found - skipping data import"
+    echo "Warning: Fixed sensors Excel file not found - skipping"
+fi
+
+# Import sample data (Mobile sensors)
+EXCEL_FILE_MOBILE="../backend/config/questdb/xlsxs/cityairq_sensor_data_mobile.xlsx"
+if [ -f "$EXCEL_FILE_MOBILE" ]; then
+    echo -n "Importing mobile sensors data..."
+    python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_MOBILE" 2>/dev/null && echo " done" || echo " skipped"
+else
+    echo "Warning: Mobile sensors Excel file not found - skipping"
 fi
 
 # Kill port-forward
