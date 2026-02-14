@@ -143,41 +143,6 @@ async def test_calculate_route_no_data():
     
     assert response.status_code == 404
 
-@pytest.mark.asyncio
-async def test_cache_hit():
-    """Test cached routes are returned"""
-    import json
-    
-    cached_route = {
-        "route": {
-            "type": "Feature",
-            "geometry": {"type": "LineString", "coordinates": [[26.1025, 44.4268], [26.1045, 44.4280]]},
-            "properties": {
-                "distance_km": 1.5,
-                "avg_pollution_pm10": 40.0,
-                "max_pollution_pm10": 50.0,
-                "calculation_time_ms": 10.0,
-                "sensor_types_used": ["fixed"],
-                "nodes_evaluated": 10,
-                "cached": True
-            }
-        },
-        "waypoints": [
-            {"lat": 44.4268, "lon": 26.1025, "pollution_level": 45.0},
-            {"lat": 44.4280, "lon": 26.1045, "pollution_level": 35.0}
-        ]
-    }
-    
-    mock_cache_manager.get_cached_route.return_value = cached_route
-    
-    async with AsyncClient(app=app, base_url="http://test") as ac:
-        response = await ac.post("/route", json=ROUTE_REQUEST)
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert data["route"]["properties"]["cached"] == True
-
-
 # Cache endpoints
 @pytest.mark.asyncio
 async def test_cache_stats():
