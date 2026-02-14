@@ -70,7 +70,7 @@ echo ""
 
 # Initialize QuestDB schema and import data
 echo "Initializing QuestDB..."
-sleep 10  # Extra wait for QuestDB to fully initialize
+sleep 20  # Extra wait for QuestDB to fully initialize
 
 # Port-forward in background
 kubectl port-forward svc/questdb-service 8812:8812 &
