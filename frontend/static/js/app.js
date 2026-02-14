@@ -137,24 +137,47 @@ function clearPollutionData() {
     pollutionLayer.clearLayers();
 }
 
-// Calculate route
+// Validate sensor types selection
+function getSelectedSensorTypes() {
+    const sensorTypes = [];
+    if (document.getElementById('sensor-fixed').checked) sensorTypes.push('fixed');
+    if (document.getElementById('sensor-mobile').checked) sensorTypes.push('mobile');
+    return sensorTypes;
+}
+
+function validateSensorTypes() {
+    const sensorTypes = getSelectedSensorTypes();
+    if (sensorTypes.length === 0) {
+        showMessage('Please select at least one sensor type (Fixed or Mobile)', 'error');
+        return false;
+    }
+    return true;
+}
+
+// Calculate route - updated with validation
 async function calculateRoute() {
+    // Validate sensor types first
+    if (!validateSensorTypes()) {
+        return;
+    }
+    
     const startLat = parseFloat(document.getElementById('start-lat').value);
     const startLon = parseFloat(document.getElementById('start-lon').value);
     const endLat = parseFloat(document.getElementById('end-lat').value);
     const endLon = parseFloat(document.getElementById('end-lon').value);
     const alpha = parseFloat(document.getElementById('alpha').value);
     
-    const sensorTypes = [];
-    if (document.getElementById('sensor-fixed').checked) sensorTypes.push('fixed');
-    if (document.getElementById('sensor-mobile').checked) sensorTypes.push('mobile');
+    const sensorTypes = getSelectedSensorTypes();
     
     if (isNaN(startLat) || isNaN(startLon) || isNaN(endLat) || isNaN(endLon)) {
         showMessage('Please enter valid coordinates', 'error');
         return;
     }
     
-    // Show loading with correct text
+    // Store original start/end for visualization
+    const originalStart = { lat: startLat, lon: startLon };
+    const originalEnd = { lat: endLat, lon: endLon };
+    
     document.getElementById('loading-text').textContent = 'Calculating route...';
     document.getElementById('loading').style.display = 'flex';
     
@@ -187,7 +210,8 @@ async function calculateRoute() {
             return;
         }
         
-        displayRoute(data);
+        // Pass original points for visualization
+        displayRoute(data, originalStart, originalEnd);
         
     } catch (error) {
         console.error('Route error:', error);
@@ -198,15 +222,47 @@ async function calculateRoute() {
 }
 
 
-// Display route on map
-function displayRoute(data) {
+// Display route on map - updated to show original points with connecting lines
+function displayRoute(data, originalStart, originalEnd) {
     routeLayer.clearLayers();
     
     const route = data.route;
     const waypoints = data.waypoints;
     const props = route.properties;
     
-    // Draw route line with color based on AQI
+    // Get first and last waypoints (snapped to grid)
+    const firstWaypoint = waypoints[0];
+    const lastWaypoint = waypoints[waypoints.length - 1];
+    
+    // Draw dashed line from original start to first waypoint (if different)
+    if (Math.abs(originalStart.lat - firstWaypoint.lat) > 0.0001 || 
+        Math.abs(originalStart.lon - firstWaypoint.lon) > 0.0001) {
+        L.polyline(
+            [[originalStart.lat, originalStart.lon], [firstWaypoint.lat, firstWaypoint.lon]],
+            {
+                color: '#888888',
+                weight: 3,
+                opacity: 0.7,
+                dashArray: '10, 10'
+            }
+        ).addTo(routeLayer);
+    }
+    
+    // Draw dashed line from last waypoint to original end (if different)
+    if (Math.abs(originalEnd.lat - lastWaypoint.lat) > 0.0001 || 
+        Math.abs(originalEnd.lon - lastWaypoint.lon) > 0.0001) {
+        L.polyline(
+            [[lastWaypoint.lat, lastWaypoint.lon], [originalEnd.lat, originalEnd.lon]],
+            {
+                color: '#888888',
+                weight: 3,
+                opacity: 0.7,
+                dashArray: '10, 10'
+            }
+        ).addTo(routeLayer);
+    }
+    
+    // Draw main route line with color based on AQI
     if (waypoints.length > 1) {
         for (let i = 0; i < waypoints.length - 1; i++) {
             const start = waypoints[i];
@@ -222,7 +278,7 @@ function displayRoute(data) {
         }
     }
     
-    // Add waypoint markers (skip first and last)
+    // Add waypoint markers (skip first and last - they get special markers)
     waypoints.forEach((wp, index) => {
         if (index === 0 || index === waypoints.length - 1) return;
         
@@ -242,22 +298,23 @@ function displayRoute(data) {
             PM10: ${(wp.pm10 || 0).toFixed(1)} µg/m³<br>
             PM2.5: ${(wp.pm25 || 0).toFixed(1)} µg/m³<br>
             NO2: ${(wp.no2 || 0).toFixed(1)} µg/m³<br>
-            <strong>AQI: ${(wp.aqi || 0).toFixed(0)}</strong>
+            <strong>AQI: ${(wp.aqi || aqi).toFixed(0)}</strong>
         `)
         .addTo(routeLayer);
     });
     
-    // Update start/end markers
-    if (waypoints.length > 0) {
-        updateStartMarker(waypoints[0].lat, waypoints[0].lon);
-        updateEndMarker(waypoints[waypoints.length - 1].lat, waypoints[waypoints.length - 1].lon);
-    }
+    // Update start/end markers at original positions
+    updateStartMarker(originalStart.lat, originalStart.lon);
+    updateEndMarker(originalEnd.lat, originalEnd.lon);
     
-    // Fit map
-    if (route.geometry.coordinates.length > 0) {
-        const bounds = L.latLngBounds(route.geometry.coordinates.map(c => [c[1], c[0]]));
-        map.fitBounds(bounds, { padding: [50, 50] });
-    }
+    // Fit map to include both original points and route
+    const allPoints = [
+        [originalStart.lat, originalStart.lon],
+        [originalEnd.lat, originalEnd.lon],
+        ...route.geometry.coordinates.map(c => [c[1], c[0]])
+    ];
+    const bounds = L.latLngBounds(allPoints);
+    map.fitBounds(bounds, { padding: [50, 50] });
     
     displayResults(props);
 }
@@ -305,18 +362,32 @@ function displayResults(props) {
     `;
 }
 
-// Query pollution data
+// Get selected sensor types for query
+function getQuerySensorTypes() {
+    const sensorTypes = [];
+    if (document.getElementById('query-sensor-fixed').checked) sensorTypes.push('fixed');
+    if (document.getElementById('query-sensor-mobile').checked) sensorTypes.push('mobile');
+    return sensorTypes;
+}
+
+// Query pollution data - updated with sensor type filter
 async function queryPollutionData() {
+    // Validate sensor types
+    if (!validateSensorTypes()) {
+        return;
+    }
+    
     const lat = parseFloat(document.getElementById('query-lat').value);
     const lon = parseFloat(document.getElementById('query-lon').value);
     const radius = parseFloat(document.getElementById('query-radius').value);
+    
+    const sensorTypes = getQuerySensorTypes();
     
     if (isNaN(lat) || isNaN(lon) || isNaN(radius)) {
         showMessage('Please enter valid coordinates and radius', 'error');
         return;
     }
     
-    // Show loading with correct text
     document.getElementById('loading-text').textContent = 'Fetching pollution data...';
     document.getElementById('loading').style.display = 'flex';
     
@@ -328,7 +399,8 @@ async function queryPollutionData() {
                 latitude: lat,
                 longitude: lon,
                 radius: radius,
-                layers: ['pm10', 'pm25', 'no2']
+                layers: ['pm10', 'pm25', 'no2'],
+                sensor_types: sensorTypes
             })
         });
         
@@ -359,7 +431,7 @@ async function queryPollutionData() {
     }
 }
 
-// Display pollution data on map
+// Display pollution data - show sensor type in popup
 function displayPollutionData(readings, centerLat, centerLon, radius) {
     pollutionLayer.clearLayers();
     
@@ -371,6 +443,9 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
         weight: 2
     }).addTo(pollutionLayer);
     
+    let fixedCount = 0;
+    let mobileCount = 0;
+    
     readings.forEach(reading => {
         const sensorId = reading[0];
         const timestamp = reading[1];
@@ -380,23 +455,33 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
         const pm25 = reading[5];
         const no2 = reading[6];
         
+        // Determine sensor type from ID
+        const sensorType = sensorId.startsWith('M') ? 'Mobile' : 'Fixed';
+        if (sensorType === 'Mobile') mobileCount++;
+        else fixedCount++;
+        
         const aqi = calculateAQI(pm10, pm25, no2);
         const color = getPollutionColor(aqi);
         
-        L.circleMarker([lat, lon], {
-            radius: 12,
+        // Different marker style for fixed vs mobile
+        const markerOptions = {
+            radius: sensorType === 'Fixed' ? 12 : 10,
             fillColor: color,
-            color: '#fff',
-            weight: 2,
-            fillOpacity: 0.9
-        })
+            color: sensorType === 'Fixed' ? '#fff' : '#333',
+            weight: sensorType === 'Fixed' ? 2 : 3,
+            fillOpacity: 0.9,
+            // Fixed = circle, Mobile = slightly smaller with dark border
+        };
+        
+        L.circleMarker([lat, lon], markerOptions)
         .bindPopup(`
-            <strong>${sensorId}</strong><br>
+            <strong>${sensorId}</strong> <em>(${sensorType})</em><br>
             <small>${timestamp}</small><br>
             <hr style="margin: 5px 0;">
             PM10: ${pm10.toFixed(1)} µg/m³<br>
             PM2.5: ${pm25.toFixed(1)} µg/m³<br>
-            NO2: ${no2.toFixed(1)} µg/m³
+            NO2: ${no2.toFixed(1)} µg/m³<br>
+            <strong>AQI: ${aqi.toFixed(0)}</strong>
         `)
         .addTo(pollutionLayer);
     });
@@ -406,5 +491,5 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
         map.fitBounds(bounds, { padding: [50, 50] });
     }
     
-    showMessage(`Found ${readings.length} pollution readings`, 'success');
+    showMessage(`Found ${readings.length} readings (${fixedCount} fixed, ${mobileCount} mobile)`, 'success');
 }
