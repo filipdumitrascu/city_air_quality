@@ -47,17 +47,24 @@ def generate_cache_key(query_params: dict) -> str:
     Generate unique cache key from query parameters.
     
     Args:
-        query_params: Query dict with latitude, longitude, radius, layers
+        query_params: Query dict with latitude, longitude, radius, layers, sensor_types
     
     Returns:
         Cache key string (e.g., 'provider_query:abc123')
     """
-    # Sort parameters for consistent keys
+    # Sort parameters for consistent keys - NOW INCLUDES sensor_types
+    sensor_types = query_params.get('sensor_types', ['fixed', 'mobile'])
+    if sensor_types:
+        sensor_types = sorted(sensor_types)
+    else:
+        sensor_types = ['fixed', 'mobile']
+    
     key_data = json.dumps({
         'latitude': round(query_params.get('latitude', 0), 4),
         'longitude': round(query_params.get('longitude', 0), 4),
         'radius': query_params.get('radius', 0),
-        'layers': sorted(query_params.get('layers', []))
+        'layers': sorted(query_params.get('layers', [])),
+        'sensor_types': sensor_types
     }, sort_keys=True)
     
     hash_hex = hashlib.md5(key_data.encode()).hexdigest()
@@ -98,7 +105,7 @@ async def process_message(message):
         decoded_message = json.loads(message.data.decode("utf-8"))
         logging.info(f"Received message: {decoded_message}")
         
-        # Acknowledge message to PubSub (won't be redelivered)
+        # Acknowledge message to PubSub
         message.ack()
 
         # Handle layer selection
@@ -106,6 +113,12 @@ async def process_message(message):
         available_layers = ["Temperature", "Humidity", "Pressure", "Altitude", "CO2", "PM1_0", "PM2_5", "PM10"]
         selected_layers = decoded_message.get("layers") or available_layers
         decoded_message["layers"] = selected_layers
+        
+        # Handle sensor_types - default to both if not specified
+        sensor_types = decoded_message.get("sensor_types")
+        if not sensor_types:
+            sensor_types = ["fixed", "mobile"]
+        decoded_message["sensor_types"] = sensor_types
 
         # Redis cache check
         cache_key = generate_cache_key(decoded_message)
@@ -135,7 +148,7 @@ async def process_message(message):
                     240,  # TTL in seconds
                     response
                 )
-                logging.info(f" Cached result: {cache_key} (TTL: 240s)")
+                logging.info(f"Cached result: {cache_key} (TTL: 240s)")
             except Exception as e:
                 logging.warning(f"Failed to cache result: {e}")
             
@@ -143,41 +156,27 @@ async def process_message(message):
             PubSubClientPublisher.publish_message("results_response_messages", response)
             
         except HTTPException as e:
-            # Database Service returned error (404 not found, 500 server error, etc.)
             logging.error(f"Error receiving response from database: {e.detail}")
-            
-            # Publish error response so Client Message Handler can inform user
             PubSubClientPublisher.publish_message("results_response_messages", {
                 "error": e.detail, 
                 "status_code": e.status_code
             })
             
     except Exception as e:
-        # Unexpected error processing message
         logging.error(f"Error processing message: {str(e)}")
-        
-        # Negative acknowledge - message will be redelivered
         message.nack()
 
 
-# Create subscriber that listens for query requests
+# Create subscriber
 results_subscriber = PubSubClientSubscriber(subscription_name, process_message)
 
 
 # Fast API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Lifespan context manager for FastAPI app.
-    Starts PubSub subscriber as background task on app startup.
-    """
-    # Startup - start listening for query requests
     asyncio.create_task(results_subscriber.start_subscriber())
     logging.info("Subscriber started and listening for messages on 'results_service_messages-sub'.")
-    
-    yield  # App runs here
-    
-    # Shutdown
+    yield
     logging.info("Shutting down Data Provider Service...")
 
 
@@ -189,14 +188,12 @@ app = FastAPI(
 )
 
 
-# Cache management endpoints (for debugging/monitoring)
+# Cache management endpoints
 @app.get("/cache/stats")
 async def cache_stats():
     """Get Redis cache statistics for Data Provider Service"""
     try:
         info = redis_client.info("stats")
-        
-        # Count only provider_query:* keys
         provider_keys = len(redis_client.keys("provider_query:*"))
         
         return {
@@ -220,16 +217,8 @@ async def clear_cache():
         keys = redis_client.keys("provider_query:*")
         if keys:
             redis_client.delete(*keys)
-            logging.info(f" Cleared {len(keys)} cached provider queries")
+            logging.info(f"Cleared {len(keys)} cached provider queries")
             return {"cleared": len(keys)}
         return {"cleared": 0, "message": "No cached queries to clear"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")
-
-
-# NOTE: Service Communication
-# This service operates primarily through PubSub messaging:
-# - Input: 'results_service_messages' topic
-# - Output: 'results_response_messages' topic
-#
-# HTTP endpoints (/cache/stats, /cache/clear) are for monitoring only

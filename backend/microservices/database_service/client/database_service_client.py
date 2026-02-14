@@ -12,7 +12,9 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 ) 
 
+
 async def send_data_to_database(payload):
+    """Send sensor data to database for storage."""
     try:
         url = f"{DATABASE_SERVER_URL}/add_data/"
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -31,16 +33,48 @@ async def send_data_to_database(payload):
         logging.error(f"Error while sending data to DatabaseServer: {str(e)}")
         return {"error": f"Error: {str(e)}"}
 
+
 async def get_data_from_database(payload):
+    """
+    Fetch pollution data from database.
+    
+    Args:
+        payload: Dict containing:
+            - latitude: Center point latitude
+            - longitude: Center point longitude
+            - radius: Search radius in km
+            - layers: List of pollution metrics
+            - sensor_types: Optional list of sensor types ('fixed', 'mobile')
+    
+    Returns:
+        JSON string with sensor readings
+    """
     try:
         url = f"{DATABASE_SERVER_URL}/get_data/"
+        
+        # Build query parameters
+        params = {
+            "latitude": payload.get("latitude"),
+            "longitude": payload.get("longitude"),
+            "radius": payload.get("radius"),
+        }
+        
+        # Add layers as multiple query params
+        if payload.get("layers"):
+            params["layers"] = payload.get("layers")
+        
+        # Add sensor_types as multiple query params
+        if payload.get("sensor_types"):
+            params["sensor_types"] = payload.get("sensor_types")
+        
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, params=payload)
+            response = await client.get(url, params=params)
             response.raise_for_status() 
        
         logging.info("Data successfully received from DatabaseServer")
         data = response.text
         return data
+        
     except HTTPException as e:
         raise e
     except httpx.HTTPStatusError as e:

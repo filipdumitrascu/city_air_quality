@@ -46,28 +46,22 @@ except Exception as e:
     logging.warning(f"Redis unavailable (caching disabled): {e}")
 
 
-def generate_cache_key(latitude: float, longitude: float, radius: float, layers: List[str]) -> str:
+def generate_cache_key(latitude: float, longitude: float, radius: float, layers: List[str], sensor_types: List[str] = None) -> str:
     """
     Generate unique cache key for query.
-    
-    Uses MD5 hash of sorted parameters to ensure:
-    - Same query --> same key
-    - Different order of layers --> same key
-    
-    Example: 
-      (44.43, 26.10, 5, ['PM10', 'NO2']) --> 'query:a3f5c8d9e2b1...'
     
     Args:
         latitude: Query center latitude
         longitude: Query center longitude
         radius: Search radius in km
         layers: List of pollution layers
+        sensor_types: List of sensor types to filter
     
     Returns:
-        Cache key string (e.g., 'query:abc123def456')
+        Cache key string
     """
-    # Round coordinates to 4 decimals (~11m precision)
-    key_data = f"{latitude:.4f},{longitude:.4f},{radius:.2f},{sorted(layers)}"
+    sensor_types_str = sorted(sensor_types) if sensor_types else ['fixed', 'mobile']
+    key_data = f"{latitude:.4f},{longitude:.4f},{radius:.2f},{sorted(layers)},{sensor_types_str}"
     hash_hex = hashlib.md5(key_data.encode()).hexdigest()
     return f"query:{hash_hex}"
 
@@ -105,28 +99,11 @@ app = FastAPI(
 def get_coordinate_deltas(radius_km: float, latitude_deg: float):
     """
     Calculate latitude and longitude deltas for a given radius in km.
-    
-    Used to convert radius (km) to coordinate bounds for spatial queries.
-    
-    Args:
-        radius_km: Search radius in kilometers
-        latitude_deg: Center latitude in degrees
-    
-    Returns:
-        (delta_lat, delta_lng): Coordinate deltas in degrees
-        
-    Math:
-        - 1 degree latitude = 111.32 km everywhere
-        - 1 degree longitude = 111.32 * cos(latitude) km (varies with latitude)
     """
-    # Latitude: constant 111.32 km per degree
     delta_lat = radius_km / 111.32
-
-    # Longitude: varies with latitude (narrower near poles)
     lat_rad = math.radians(latitude_deg)
     km_per_deg_lng = 111.32 * math.cos(lat_rad)
     delta_lng = radius_km / km_per_deg_lng
-
     return delta_lat, delta_lng
 
 
@@ -146,14 +123,12 @@ async def health_check():
 @app.post("/add_data/")
 async def add_data(payload: InsertPollutionDataRequest):
     try:
-        # Initialize pollution data dictionary
         pollution_data = {
             "PM10": None,
             "PM2.5": None,
             "NO2": None
         }
 
-        # Map payload data to pollution_data dictionary
         for entry in payload.data:
             dimension = entry.dimension
             if dimension == "PM2_5":
@@ -161,19 +136,16 @@ async def add_data(payload: InsertPollutionDataRequest):
             elif dimension in pollution_data:
                 pollution_data[dimension] = entry.value
 
-        # Prepare parameters for database insertion
-        # Schema: sensor_id, timestamp, latitude, longitude, pm10, pm25, no2
         params = (
-            payload.clientId,           # sensor_id
-            payload.timestamp,          # timestamp
-            payload.location.latitude,  # latitude
-            payload.location.longitude, # longitude
-            pollution_data["PM10"],     # pm10
-            pollution_data["PM2.5"],    # pm25
-            pollution_data["NO2"]       # no2
+            payload.clientId,
+            payload.timestamp,
+            payload.location.latitude,
+            payload.location.longitude,
+            pollution_data["PM10"],
+            pollution_data["PM2.5"],
+            pollution_data["NO2"]
         )
 
-        # Execute INSERT query
         insert_data(params)
         return {"success": True}
 
@@ -181,50 +153,38 @@ async def add_data(payload: InsertPollutionDataRequest):
         logging.error(f"Error adding data {str(e)}")
         raise HTTPException(status_code=400, detail=f"Error adding data: {str(e)}")
 
-# Endpoint (data retrieval) with redis caching
+
+# Endpoint (data retrieval) with redis caching and sensor_types filter
 @app.get("/get_data/")
 async def get_data(
     latitude: float = Query(...),
     longitude: float = Query(...),
     radius: float = Query(..., ge=0),
-    layers: Optional[List[str]] = Query(None)
+    layers: Optional[List[str]] = Query(None),
+    sensor_types: Optional[List[str]] = Query(None)
 ):
     """
     Retrieve pollution data within a geographic radius with Redis caching.
     
-    Cache strategy:
-    1. Generate cache key from parameters
-    2. Check Redis for cached result
-    3. If HIT: return cached data
-    4. If MISS: query QuestDB, cache result, return
-    
-    Flow:
-    1. Convert radius (km) to coordinate deltas
-    2. Query QuestDB for readings within bounding box
-    3. Return latest readings per grid cell (LATEST ON partition)
-    
     Args:
         latitude: Center point latitude
         longitude: Center point longitude
-        radius: Search radius in kilometers (float, >=0)
+        radius: Search radius in kilometers
         layers: Optional list of pollution metrics to retrieve
-                Default: All metrics (Temperature, PM10, etc.)
+        sensor_types: Optional list of sensor types to filter ('fixed', 'mobile')
     
     Returns:
-        List of sensor readings: [clientId, timestamp, lat, lon, ...pollution values]
-        
-    Raises:
-        404: No data found in specified area
-        500: Database query error
-    
-    Cache TTL: 5 minutes (300s)
+        List of sensor readings
     """
-    # Default to all available pollution layers if none specified
     if not layers:
         layers = ["Temperature", "Humidity", "Pressure", "Altitude", "CO2", "PM1_0", "PM2_5", "PM10"]
+    
+    # Default to both sensor types if not specified
+    if not sensor_types:
+        sensor_types = ["fixed", "mobile"]
 
     # Redis cache check
-    cache_key = generate_cache_key(latitude, longitude, radius, layers)
+    cache_key = generate_cache_key(latitude, longitude, radius, layers, sensor_types)
     
     try:
         cached_result = redis_client.get(cache_key)
@@ -234,56 +194,43 @@ async def get_data(
         else:
             logging.info(f"Cache MISS: {cache_key}")
     except Exception as e:
-        # Redis error - continue without cache
         logging.warning(f"Redis error (continuing without cache): {e}")
 
     # Query database (Cache miss)
     try:
-        # Convert radius to coordinate deltas
         delta_lat, delta_lng = get_coordinate_deltas(radius, latitude)
         
-        # Prepare parameters for query
-        params = (layers, latitude, delta_lat, longitude, delta_lng)
+        # Pass sensor_types to fetch_data
+        params = (layers, latitude, delta_lat, longitude, delta_lng, sensor_types)
         
-        # Execute SELECT query
         results = fetch_data(params)
         
         # Cache result
         try:
             redis_client.setex(
                 cache_key,
-                300,  # TTL in seconds
+                300,
                 json.dumps(results)
             )
             logging.info(f"Cached result: {cache_key}")
         except Exception as e:
-            # Failed to cache - not critical, continue
             logging.warning(f"Failed to cache result: {e}")
         
         return results
         
     except HTTPException as http_exc:
-        # Re-raise HTTP exceptions (404, etc.)
         logging.error(f"HTTP Exception: {http_exc}")
         raise http_exc
     except Exception as e:
-        # Log and wrap unexpected errors
         logging.error(f"Error fetching data: {str(e)}")
         logging.exception(e)
         raise HTTPException(status_code=500, detail=f"Error fetching measurements: {str(e)}")
 
 
-# Cache management endpoints (for debugging/monitoring)
+# Cache management endpoints
 @app.get("/cache/stats")
 async def cache_stats():
-    """
-    Get Redis cache statistics.
-    
-    Returns metrics useful for monitoring cache performance:
-    - Hit rate percentage
-    - Number of cached keys
-    - Memory usage
-    """
+    """Get Redis cache statistics."""
     try:
         info = redis_client.info("stats")
         keyspace = redis_client.info("keyspace")
@@ -308,17 +255,8 @@ async def cache_stats():
 
 @app.delete("/cache/clear")
 async def clear_cache():
-    """
-    Clear all cached queries.
-    
-    WARNING: Use with caution in production!
-    Only clears keys with 'query:' prefix (safe for other Redis data).
-    
-    Returns:
-        Number of keys cleared
-    """
+    """Clear all cached queries."""
     try:
-        # Only delete keys with 'query:' prefix
         keys = redis_client.keys("query:*")
         if keys:
             redis_client.delete(*keys)

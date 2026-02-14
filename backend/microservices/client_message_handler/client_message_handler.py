@@ -58,17 +58,24 @@ def generate_cache_key(payload: dict) -> str:
     Generate unique cache key from query payload.
     
     Args:
-        payload: Query parameters (latitude, longitude, radius, layers)
+        payload: Query parameters (latitude, longitude, radius, layers, sensor_types)
     
     Returns:
         Cache key string (e.g., 'client_query:abc123')
     """
     # Extract and sort parameters for consistent keys
+    sensor_types = payload.get('sensor_types', ['fixed', 'mobile'])
+    if sensor_types:
+        sensor_types = sorted(sensor_types)
+    else:
+        sensor_types = ['fixed', 'mobile']
+    
     key_data = json.dumps({
         'latitude': round(payload.get('latitude', 0), 4),
         'longitude': round(payload.get('longitude', 0), 4),
         'radius': payload.get('radius', 0),
-        'layers': sorted(payload.get('layers', []))
+        'layers': sorted(payload.get('layers', [])),
+        'sensor_types': sensor_types
     }, sort_keys=True)
     
     hash_hex = hashlib.md5(key_data.encode()).hexdigest()
@@ -76,7 +83,6 @@ def generate_cache_key(payload: dict) -> str:
 
 
 # Queue to temporarily store responses from data provider service
-# Works as a bridge between PubSub subscriber and HTTP response
 response_queue = Queue()
 
 
@@ -116,17 +122,10 @@ results_subscriber = PubSubClientSubscriber("results_response_messages-sub", pro
 # Fast API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Lifespan context manager for FastAPI app.
-    Starts PubSub subscriber as background task on app startup.
-    """
-    # Start subscriber in background (runs continuously)
+    """Lifespan context manager for FastAPI app."""
     asyncio.create_task(results_subscriber.start_subscriber())
     logging.info("Subscriber started and listening for messages on 'results_response_messages-sub'.")
-    
-    yield  # App runs here
-    
-    # Shutdown
+    yield
     logging.info("Shutting down...")
 
 app = FastAPI(
@@ -149,7 +148,6 @@ async def health_check():
     return {"status": "healthy", "service": "client_message_handler"}
 
 
-
 # Prometheus metrics for monitoring
 Instrumentator().instrument(app).expose(app)
 
@@ -157,27 +155,8 @@ Instrumentator().instrument(app).expose(app)
 # Endpoint ingest
 @app.post("/ingest/")
 async def ingest_data(payload: dict, x_auth_token: str = Header(None)):
-    """
-    Publish sensor data to Ingest Service via PubSub.
-    
-    Flow:
-    1. Client sends pollution data (sensor_id, location, readings)
-    2. Publishes to 'ingest_service_messages' topic
-    3. Ingest Service picks it up and stores in database
-    4. Returns immediate success (async fire-and-forget)
-    
-    Args:
-        payload: Sensor data (sensor_id, timestamp, location, measurements)
-        x_auth_token: Authentication token
-    
-    Returns:
-        200: Success message
-        400: Error publishing to PubSub
-    """
-    # await authorize(x_auth_token)
-
+    """Publish sensor data to Ingest Service via PubSub."""
     try:
-        # Publish message to PubSub topic (async, non-blocking)
         PubSubClientPublisher.publish_message("ingest_service_messages", payload)
         logging.info("The request was sent to ingest service")
 
@@ -191,6 +170,7 @@ async def ingest_data(payload: dict, x_auth_token: str = Header(None)):
             status_code=400, 
             detail=f"Error while sending the request into the message queue"
         )
+
 
 # Endpoint results with redis caching
 @app.post("/results/")
@@ -225,25 +205,21 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
 
     Cache TTL: 3 minutes
     """
-    # await authorize(x_auth_token)
-    
     # Redis cache check
     cache_key = generate_cache_key(payload)
     
     try:
         cached_result = redis_client.get(cache_key)
         if cached_result:
-            logging.info(f" Cache HIT: {cache_key}")
+            logging.info(f"Cache HIT: {cache_key}")
             return {"data": json.loads(cached_result), "cached": True}
         else:
-            logging.info(f"✗ Cache MISS: {cache_key}")
+            logging.info(f"Cache MISS: {cache_key}")
     except Exception as e:
-        # Redis error - continue without cache
         logging.warning(f"Redis error (continuing without cache): {e}")
     
-    # Pubsub queery (Cache miss)
+    # Pubsub query (Cache miss)
     try:
-        # Publish query request to PubSub
         PubSubClientPublisher.publish_message("results_service_messages", payload)
         logging.info("The request was published in the queue and waiting for response....")
         
@@ -255,14 +231,11 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
                     status_code=408, 
                     detail="Timeout waiting for response from results service"
                 )
-            # Sleep to avoid busy-waiting
             await asyncio.sleep(1)
         
-        # Response arrived - retrieve from queue
         response_data = response_queue.get_nowait()
         logging.info(f"Received response: {response_data}")
         
-        # Check if response contains error
         if "error" in response_data:
             error_message = json.loads(response_data["error"])
             logging.error(f"Error received from results service: {error_message}")
@@ -271,7 +244,6 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
                 detail=f"Error received from results service: {error_message}"
             )
         
-        # Parse successful response
         response_data = json.loads(response_data)
         
         # Cache result
@@ -281,9 +253,8 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
                 180,  # TTL in seconds
                 json.dumps(response_data)
             )
-            logging.info(f" Cached result: {cache_key} (TTL: 180s)")
+            logging.info(f"Cached result: {cache_key} (TTL: 180s)")
         except Exception as e:
-            # Failed to cache - not critical, continue
             logging.warning(f"Failed to cache result: {e}")
         
         return {"data": response_data, "cached": False}
@@ -294,6 +265,7 @@ async def get_data(payload: dict, x_auth_token: str = Header(None)):
     except Exception as e:
         logging.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
 
 # Endpoint route
 @app.post("/route/")
@@ -307,8 +279,6 @@ async def calculate_route(payload: dict, x_auth_token: str = Header(None)):
     3. Routing Service calculates A* path with Redis caching
     4. Returns GeoJSON route with statistics
     """
-    # await authorize(x_auth_token)
-    
     try:
         # Forward to Routing Service
         routing_service_url = os.getenv('ROUTING_SERVICE_URL', 'http://routing-service:8000')
@@ -345,15 +315,12 @@ async def calculate_route(payload: dict, x_auth_token: str = Header(None)):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-# Cache management endpoints (for debugging/monitoring)
+# Cache management endpoints
 @app.get("/cache/stats")
 async def cache_stats():
     """Get Redis cache statistics for Client Message Handler"""
     try:
         info = redis_client.info("stats")
-        keyspace = redis_client.info("keyspace")
-        
-        # Count only client_query:* keys
         client_keys = len(redis_client.keys("client_query:*"))
         
         return {
@@ -377,7 +344,7 @@ async def clear_cache():
         keys = redis_client.keys("client_query:*")
         if keys:
             redis_client.delete(*keys)
-            logging.info(f" Cleared {len(keys)} cached client queries")
+            logging.info(f"Cleared {len(keys)} cached client queries")
             return {"cleared": len(keys)}
         return {"cleared": 0, "message": "No cached queries to clear"}
     except Exception as e:
