@@ -243,21 +243,28 @@ function displayRoute(data, originalStart, originalEnd) {
     const firstWaypoint = waypoints[0];
     const lastWaypoint = waypoints[waypoints.length - 1];
     
-    // Dashed line from original start to first waypoint
+    // Get colors for first and last waypoints
+    const firstAqi = firstWaypoint.aqi || calculateAQI(firstWaypoint.pm10, firstWaypoint.pm25, firstWaypoint.no2);
+    const firstColor = getPollutionColor(firstAqi);
+    
+    const lastAqi = lastWaypoint.aqi || calculateAQI(lastWaypoint.pm10, lastWaypoint.pm25, lastWaypoint.no2);
+    const lastColor = getPollutionColor(lastAqi);
+    
+    // Line from original start to first waypoint - USE FIRST WAYPOINT COLOR
     if (Math.abs(originalStart.lat - firstWaypoint.lat) > 0.0001 || 
         Math.abs(originalStart.lon - firstWaypoint.lon) > 0.0001) {
         L.polyline(
             [[originalStart.lat, originalStart.lon], [firstWaypoint.lat, firstWaypoint.lon]],
-            { color: '#888888', weight: 3, opacity: 0.7, dashArray: '10, 10' }
+            { color: firstColor, weight: 6, opacity: 0.8 }
         ).addTo(routeLayer);
     }
     
-    // Dashed line from last waypoint to original end
+    // Line from last waypoint to original end
     if (Math.abs(originalEnd.lat - lastWaypoint.lat) > 0.0001 || 
         Math.abs(originalEnd.lon - lastWaypoint.lon) > 0.0001) {
         L.polyline(
             [[lastWaypoint.lat, lastWaypoint.lon], [originalEnd.lat, originalEnd.lon]],
-            { color: '#888888', weight: 3, opacity: 0.7, dashArray: '10, 10' }
+            { color: lastColor, weight: 6, opacity: 0.8 }
         ).addTo(routeLayer);
     }
     

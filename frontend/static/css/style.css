@@ -18,11 +18,11 @@ body {
     overflow: hidden;
 }
 
-/* Sidebar - fixed width, no overflow */
+/* Sidebar - wider (340px) */
 .sidebar {
-    width: 320px;
-    min-width: 320px;
-    max-width: 320px;
+    width: 340px;
+    min-width: 340px;
+    max-width: 340px;
     background: #16213e;
     padding: 15px;
     overflow-y: auto;
@@ -48,7 +48,6 @@ body {
     padding: 12px;
     margin-bottom: 15px;
     width: 100%;
-    max-width: 290px;
 }
 
 .form-section h3 {
@@ -71,18 +70,16 @@ body {
     margin-bottom: 5px;
 }
 
-/* Coordinate inputs - FIXED width */
+/* Coordinate inputs - proper width */
 .coord-inputs {
     display: flex;
     gap: 8px;
     width: 100%;
-    max-width: 266px;
 }
 
 .coord-inputs input {
     flex: 1;
-    width: calc(50% - 4px);
-    max-width: 129px;
+    min-width: 0;
     padding: 8px 6px;
     border: 1px solid #0f3460;
     border-radius: 5px;
@@ -98,7 +95,6 @@ body {
 
 input[type="range"] {
     width: 100%;
-    max-width: 266px;
     margin-top: 5px;
 }
 
@@ -108,7 +104,6 @@ input[type="range"] {
     font-size: 0.75rem;
     color: #666;
     margin-top: 3px;
-    max-width: 266px;
 }
 
 .checkbox-group {
@@ -140,7 +135,6 @@ input[type="range"] {
     font-weight: 600;
     transition: all 0.2s;
     width: 100%;
-    max-width: 266px;
 }
 
 .btn-primary {
@@ -182,7 +176,6 @@ input[type="range"] {
     background: #1a1a2e;
     border-radius: 10px;
     padding: 12px;
-    max-width: 290px;
 }
 
 .results-section h3 {
@@ -339,7 +332,6 @@ input[type="range"] {
     cursor: pointer;
     margin-top: 8px;
     width: 100%;
-    max-width: 266px;
     transition: all 0.2s;
 }
 
