@@ -360,7 +360,7 @@ function displayRouteResults(props) {
             <span class="result-value">${props.nodes_evaluated}</span>
         </div>
         <div class="result-item">
-            <span class="result-label">Cached</span>
+            <span class="result-label">Cache HIT</span>
             <span class="result-value ${props.cached ? 'cached' : ''}">${props.cached ? 'Yes' : 'No'}</span>
         </div>
     `;
