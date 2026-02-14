@@ -18,10 +18,10 @@ let pollutionLayer = L.layerGroup().addTo(map);
 let startMarker = null;
 let endMarker = null;
 
-// Map click mode
+// Map click mode: 'start', 'end', 'query-center', or null
 let clickMode = null;
 
-// Custom icons - Square for start, X for end
+// Custom icons
 const startIcon = L.divIcon({
     className: 'custom-marker',
     html: '<div style="width:24px; height:24px; background:#00cc66; border:3px solid #fff; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:bold; font-size:12px;">S</div>',
@@ -31,12 +31,12 @@ const startIcon = L.divIcon({
 
 const endIcon = L.divIcon({
     className: 'custom-marker',
-    html: '<div style="width:24px; height:24px; background:#ff4444; border:3px solid #fff; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:bold; font-size:16px;">✕</div>',
+    html: '<div style="width:24px; height:24px; background:#ff4444; border:3px solid #fff; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:bold; font-size:16px;">&#10005;</div>',
     iconSize: [24, 24],
     iconAnchor: [12, 12]
 });
 
-// Calculate combined Air Quality Index from multiple pollutants
+// Calculate combined Air Quality Index
 function calculateAQI(pm10, pm25, no2) {
     const pm10Index = pm10 || 0;
     const pm25Index = (pm25 || 0) * 1.5;
@@ -44,7 +44,7 @@ function calculateAQI(pm10, pm25, no2) {
     return (pm10Index + pm25Index + no2Index) / 3.3;
 }
 
-// Get pollution color based on combined AQI
+// Get pollution color based on AQI
 function getPollutionColor(aqi) {
     if (aqi <= 50) return '#00ff00';
     if (aqi <= 100) return '#ffff00';
@@ -66,6 +66,13 @@ function setEndFromMap() {
     showMessage('Click on the map to set end point', 'info');
 }
 
+// Set query center from map click
+function setQueryCenterFromMap() {
+    clickMode = 'query-center';
+    map.getContainer().style.cursor = 'crosshair';
+    showMessage('Click on the map to set query center', 'info');
+}
+
 // Map click handler
 map.on('click', function(e) {
     if (clickMode === 'start') {
@@ -79,6 +86,12 @@ map.on('click', function(e) {
         document.getElementById('end-lat').value = e.latlng.lat.toFixed(4);
         document.getElementById('end-lon').value = e.latlng.lng.toFixed(4);
         updateEndMarker(e.latlng.lat, e.latlng.lng);
+        clickMode = null;
+        map.getContainer().style.cursor = '';
+        hideMessage();
+    } else if (clickMode === 'query-center') {
+        document.getElementById('query-lat').value = e.latlng.lat.toFixed(4);
+        document.getElementById('query-lon').value = e.latlng.lng.toFixed(4);
         clickMode = null;
         map.getContainer().style.cursor = '';
         hideMessage();
@@ -105,7 +118,7 @@ function updateEndMarker(lat, lon) {
         .addTo(markersLayer);
 }
 
-// Show message
+// Show message in Results section
 function showMessage(message, type) {
     const resultsSection = document.getElementById('results-section');
     const resultsDiv = document.getElementById('route-results');
@@ -123,7 +136,7 @@ function hideMessage() {
     document.getElementById('results-section').style.display = 'none';
 }
 
-// Clear route from map (including start/end markers)
+// Clear route from map
 function clearRoute() {
     routeLayer.clearLayers();
     markersLayer.clearLayers();
@@ -132,32 +145,34 @@ function clearRoute() {
     document.getElementById('results-section').style.display = 'none';
 }
 
-// Clear pollution data from map
+// Clear pollution data from map AND Results
 function clearPollutionData() {
     pollutionLayer.clearLayers();
+    document.getElementById('results-section').style.display = 'none';
 }
 
-// Validate sensor types selection
-function getSelectedSensorTypes() {
+// Get selected sensor types for route
+function getRouteSensorTypes() {
     const sensorTypes = [];
     if (document.getElementById('sensor-fixed').checked) sensorTypes.push('fixed');
     if (document.getElementById('sensor-mobile').checked) sensorTypes.push('mobile');
     return sensorTypes;
 }
 
-function validateSensorTypes() {
-    const sensorTypes = getSelectedSensorTypes();
-    if (sensorTypes.length === 0) {
-        showMessage('Please select at least one sensor type (Fixed or Mobile)', 'error');
-        return false;
-    }
-    return true;
+// Get selected sensor types for query
+function getQuerySensorTypes() {
+    const sensorTypes = [];
+    if (document.getElementById('query-sensor-fixed').checked) sensorTypes.push('fixed');
+    if (document.getElementById('query-sensor-mobile').checked) sensorTypes.push('mobile');
+    return sensorTypes;
 }
 
-// Calculate route - updated with validation
+// Calculate route
 async function calculateRoute() {
-    // Validate sensor types first
-    if (!validateSensorTypes()) {
+    // Validate sensor types FIRST
+    const sensorTypes = getRouteSensorTypes();
+    if (sensorTypes.length === 0) {
+        showMessage('Please select at least one sensor type (Fixed or Mobile)', 'info');
         return;
     }
     
@@ -167,14 +182,11 @@ async function calculateRoute() {
     const endLon = parseFloat(document.getElementById('end-lon').value);
     const alpha = parseFloat(document.getElementById('alpha').value);
     
-    const sensorTypes = getSelectedSensorTypes();
-    
     if (isNaN(startLat) || isNaN(startLon) || isNaN(endLat) || isNaN(endLon)) {
         showMessage('Please enter valid coordinates', 'error');
         return;
     }
     
-    // Store original start/end for visualization
     const originalStart = { lat: startLat, lon: startLon };
     const originalEnd = { lat: endLat, lon: endLon };
     
@@ -210,7 +222,6 @@ async function calculateRoute() {
             return;
         }
         
-        // Pass original points for visualization
         displayRoute(data, originalStart, originalEnd);
         
     } catch (error) {
@@ -221,8 +232,7 @@ async function calculateRoute() {
     }
 }
 
-
-// Display route on map - updated to show original points with connecting lines
+// Display route on map
 function displayRoute(data, originalStart, originalEnd) {
     routeLayer.clearLayers();
     
@@ -230,39 +240,28 @@ function displayRoute(data, originalStart, originalEnd) {
     const waypoints = data.waypoints;
     const props = route.properties;
     
-    // Get first and last waypoints (snapped to grid)
     const firstWaypoint = waypoints[0];
     const lastWaypoint = waypoints[waypoints.length - 1];
     
-    // Draw dashed line from original start to first waypoint (if different)
+    // Dashed line from original start to first waypoint
     if (Math.abs(originalStart.lat - firstWaypoint.lat) > 0.0001 || 
         Math.abs(originalStart.lon - firstWaypoint.lon) > 0.0001) {
         L.polyline(
             [[originalStart.lat, originalStart.lon], [firstWaypoint.lat, firstWaypoint.lon]],
-            {
-                color: '#888888',
-                weight: 3,
-                opacity: 0.7,
-                dashArray: '10, 10'
-            }
+            { color: '#888888', weight: 3, opacity: 0.7, dashArray: '10, 10' }
         ).addTo(routeLayer);
     }
     
-    // Draw dashed line from last waypoint to original end (if different)
+    // Dashed line from last waypoint to original end
     if (Math.abs(originalEnd.lat - lastWaypoint.lat) > 0.0001 || 
         Math.abs(originalEnd.lon - lastWaypoint.lon) > 0.0001) {
         L.polyline(
             [[lastWaypoint.lat, lastWaypoint.lon], [originalEnd.lat, originalEnd.lon]],
-            {
-                color: '#888888',
-                weight: 3,
-                opacity: 0.7,
-                dashArray: '10, 10'
-            }
+            { color: '#888888', weight: 3, opacity: 0.7, dashArray: '10, 10' }
         ).addTo(routeLayer);
     }
     
-    // Draw main route line with color based on AQI
+    // Main route with pollution colors
     if (waypoints.length > 1) {
         for (let i = 0; i < waypoints.length - 1; i++) {
             const start = waypoints[i];
@@ -278,7 +277,7 @@ function displayRoute(data, originalStart, originalEnd) {
         }
     }
     
-    // Add waypoint markers (skip first and last - they get special markers)
+    // Waypoint markers
     waypoints.forEach((wp, index) => {
         if (index === 0 || index === waypoints.length - 1) return;
         
@@ -295,19 +294,17 @@ function displayRoute(data, originalStart, originalEnd) {
         .bindPopup(`
             <strong>Waypoint ${index}</strong><br>
             <hr style="margin: 5px 0;">
-            PM10: ${(wp.pm10 || 0).toFixed(1)} µg/m³<br>
-            PM2.5: ${(wp.pm25 || 0).toFixed(1)} µg/m³<br>
-            NO2: ${(wp.no2 || 0).toFixed(1)} µg/m³<br>
+            PM10: ${(wp.pm10 || 0).toFixed(1)} ug/m3<br>
+            PM2.5: ${(wp.pm25 || 0).toFixed(1)} ug/m3<br>
+            NO2: ${(wp.no2 || 0).toFixed(1)} ug/m3<br>
             <strong>AQI: ${(wp.aqi || aqi).toFixed(0)}</strong>
         `)
         .addTo(routeLayer);
     });
     
-    // Update start/end markers at original positions
     updateStartMarker(originalStart.lat, originalStart.lon);
     updateEndMarker(originalEnd.lat, originalEnd.lon);
     
-    // Fit map to include both original points and route
     const allPoints = [
         [originalStart.lat, originalStart.lon],
         [originalEnd.lat, originalEnd.lon],
@@ -316,11 +313,11 @@ function displayRoute(data, originalStart, originalEnd) {
     const bounds = L.latLngBounds(allPoints);
     map.fitBounds(bounds, { padding: [50, 50] });
     
-    displayResults(props);
+    displayRouteResults(props);
 }
 
-// Display route results with all pollutants
-function displayResults(props) {
+// Display route results
+function displayRouteResults(props) {
     const resultsSection = document.getElementById('results-section');
     const resultsDiv = document.getElementById('route-results');
     
@@ -337,15 +334,15 @@ function displayResults(props) {
         </div>
         <div class="result-item">
             <span class="result-label">Avg PM10</span>
-            <span class="result-value">${props.avg_pollution_pm10.toFixed(1)} µg/m³</span>
+            <span class="result-value">${props.avg_pollution_pm10.toFixed(1)} ug/m3</span>
         </div>
         <div class="result-item">
             <span class="result-label">Avg PM2.5</span>
-            <span class="result-value">${(props.avg_pollution_pm25 || 0).toFixed(1)} µg/m³</span>
+            <span class="result-value">${(props.avg_pollution_pm25 || 0).toFixed(1)} ug/m3</span>
         </div>
         <div class="result-item">
             <span class="result-label">Avg NO2</span>
-            <span class="result-value">${(props.avg_pollution_no2 || 0).toFixed(1)} µg/m³</span>
+            <span class="result-value">${(props.avg_pollution_no2 || 0).toFixed(1)} ug/m3</span>
         </div>
         <div class="result-item">
             <span class="result-label">Calculation Time</span>
@@ -362,26 +359,18 @@ function displayResults(props) {
     `;
 }
 
-// Get selected sensor types for query
-function getQuerySensorTypes() {
-    const sensorTypes = [];
-    if (document.getElementById('query-sensor-fixed').checked) sensorTypes.push('fixed');
-    if (document.getElementById('query-sensor-mobile').checked) sensorTypes.push('mobile');
-    return sensorTypes;
-}
-
-// Query pollution data - updated with sensor type filter
+// Query pollution data
 async function queryPollutionData() {
-    // Validate sensor types
-    if (!validateSensorTypes()) {
+    // Validate sensor types FIRST
+    const sensorTypes = getQuerySensorTypes();
+    if (sensorTypes.length === 0) {
+        showMessage('Please select at least one sensor type (Fixed or Mobile)', 'info');
         return;
     }
     
     const lat = parseFloat(document.getElementById('query-lat').value);
     const lon = parseFloat(document.getElementById('query-lon').value);
     const radius = parseFloat(document.getElementById('query-radius').value);
-    
-    const sensorTypes = getQuerySensorTypes();
     
     if (isNaN(lat) || isNaN(lon) || isNaN(radius)) {
         showMessage('Please enter valid coordinates and radius', 'error');
@@ -431,7 +420,7 @@ async function queryPollutionData() {
     }
 }
 
-// Display pollution data - show sensor type in popup
+// Display pollution data
 function displayPollutionData(readings, centerLat, centerLon, radius) {
     pollutionLayer.clearLayers();
     
@@ -455,7 +444,6 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
         const pm25 = reading[5];
         const no2 = reading[6];
         
-        // Determine sensor type from ID
         const sensorType = sensorId.startsWith('M') ? 'Mobile' : 'Fixed';
         if (sensorType === 'Mobile') mobileCount++;
         else fixedCount++;
@@ -463,14 +451,12 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
         const aqi = calculateAQI(pm10, pm25, no2);
         const color = getPollutionColor(aqi);
         
-        // Different marker style for fixed vs mobile
         const markerOptions = {
             radius: sensorType === 'Fixed' ? 12 : 10,
             fillColor: color,
             color: sensorType === 'Fixed' ? '#fff' : '#333',
             weight: sensorType === 'Fixed' ? 2 : 3,
-            fillOpacity: 0.9,
-            // Fixed = circle, Mobile = slightly smaller with dark border
+            fillOpacity: 0.9
         };
         
         L.circleMarker([lat, lon], markerOptions)
@@ -478,9 +464,9 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
             <strong>${sensorId}</strong> <em>(${sensorType})</em><br>
             <small>${timestamp}</small><br>
             <hr style="margin: 5px 0;">
-            PM10: ${pm10.toFixed(1)} µg/m³<br>
-            PM2.5: ${pm25.toFixed(1)} µg/m³<br>
-            NO2: ${no2.toFixed(1)} µg/m³<br>
+            PM10: ${pm10.toFixed(1)} ug/m3<br>
+            PM2.5: ${pm25.toFixed(1)} ug/m3<br>
+            NO2: ${no2.toFixed(1)} ug/m3<br>
             <strong>AQI: ${aqi.toFixed(0)}</strong>
         `)
         .addTo(pollutionLayer);
