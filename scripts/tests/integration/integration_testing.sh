@@ -41,7 +41,7 @@ echo "Test 2: Ingest Data via PubSub"
 TIMESTAMP_MS=$(($(date +%s) * 1000))
 
 INGEST_PAYLOAD='{
-  "clientId": "TEST_SENSOR_001",
+  "clientId": "F000_IntTesting",
   "timestamp": '$TIMESTAMP_MS',
   "location": {"latitude": 44.4268, "longitude": 26.1025},
   "data": [
