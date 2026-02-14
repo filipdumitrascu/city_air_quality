@@ -29,7 +29,7 @@ class CacheManager:
             logger.warning(f"Redis connection failed: {e}. Caching disabled.")
             self.connected = False
     
-    def generate_cache_key(self, start, goal, alpha, sensor_types) -> str:
+    def generate_cache_key(self, start, goal, alpha, sensor_types, heuristic: str = "haversine") -> str:
         """
         Generate unique cache key from request parameters
         
@@ -38,12 +38,14 @@ class CacheManager:
             goal: Goal coordinate
             alpha: Pollution weight
             sensor_types: List of sensor types
+            heuristic: Heuristic function name
         
         Returns:
             Cache key string (e.g., 'route:abc123')
         """
         # Round coordinates to 4 decimals for consistent caching
-        key_data = f"{start.lat:.4f},{start.lon:.4f}|{goal.lat:.4f},{goal.lon:.4f}|{alpha:.2f}|{sorted(sensor_types)}"
+        # Include heuristic in cache key
+        key_data = f"{start.lat:.4f},{start.lon:.4f}|{goal.lat:.4f},{goal.lon:.4f}|{alpha:.2f}|{sorted(sensor_types)}|{heuristic}"
         hash_hex = hashlib.md5(key_data.encode()).hexdigest()
         return f"route:{hash_hex}"
     

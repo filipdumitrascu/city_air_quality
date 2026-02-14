@@ -20,6 +20,10 @@ class RouteRequest(BaseModel):
         default=["fixed", "mobile"],
         description="Which sensor types to use: ['fixed'], ['mobile'], or ['fixed', 'mobile']"
     )
+    heuristic: Literal["haversine", "euclidean", "manhattan", "diagonal", "octile"] = Field(
+        default="haversine",
+        description="Heuristic function for A* pathfinding"
+    )
 
 class RouteNode(BaseModel):
     """Single node in the route with all pollution values"""
@@ -53,6 +57,7 @@ class GeoJSONProperties(BaseModel):
     # Metadata
     calculation_time_ms: float
     sensor_types_used: List[str]
+    heuristic_used: str
     nodes_evaluated: int
     cached: bool
 

@@ -1,4 +1,4 @@
-// API URL - use proxy endpoints (same origin, no CORS issues)
+// API URL - use proxy endpoints
 const API_URL = "/api";
 
 // Map initialization
@@ -24,16 +24,16 @@ let clickMode = null;
 // Custom icons
 const startIcon = L.divIcon({
     className: 'custom-marker',
-    html: '<div style="width:24px; height:24px; background:#00cc66; border:3px solid #fff; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:bold; font-size:12px;">S</div>',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12]
+    html: '<div style="width:28px; height:28px; background:#00cc66; border:3px solid #fff; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:bold; font-size:14px;">S</div>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14]
 });
 
 const endIcon = L.divIcon({
     className: 'custom-marker',
-    html: '<div style="width:24px; height:24px; background:#ff4444; border:3px solid #fff; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:bold; font-size:16px;">&#10005;</div>',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12]
+    html: '<div style="width:28px; height:28px; background:#ff4444; border:3px solid #fff; border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:bold; font-size:18px;">&#10005;</div>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14]
 });
 
 // Calculate combined Air Quality Index
@@ -145,7 +145,7 @@ function clearRoute() {
     document.getElementById('results-section').style.display = 'none';
 }
 
-// Clear pollution data from map AND Results
+// Clear pollution data from map and results
 function clearPollutionData() {
     pollutionLayer.clearLayers();
     document.getElementById('results-section').style.display = 'none';
@@ -169,7 +169,7 @@ function getQuerySensorTypes() {
 
 // Calculate route
 async function calculateRoute() {
-    // Validate sensor types FIRST
+    // Validate sensor types
     const sensorTypes = getRouteSensorTypes();
     if (sensorTypes.length === 0) {
         showMessage('Please select at least one sensor type (Fixed or Mobile)', 'info');
@@ -201,7 +201,8 @@ async function calculateRoute() {
                 start: { lat: startLat, lon: startLon },
                 goal: { lat: endLat, lon: endLon },
                 alpha: alpha,
-                sensor_types: sensorTypes
+                sensor_types: sensorTypes,
+                heuristic: 'haversine'
             })
         });
         
@@ -250,12 +251,12 @@ function displayRoute(data, originalStart, originalEnd) {
     const lastAqi = lastWaypoint.aqi || calculateAQI(lastWaypoint.pm10, lastWaypoint.pm25, lastWaypoint.no2);
     const lastColor = getPollutionColor(lastAqi);
     
-    // Line from original start to first waypoint - USE FIRST WAYPOINT COLOR
+    // Line from original start to first waypoint
     if (Math.abs(originalStart.lat - firstWaypoint.lat) > 0.0001 || 
         Math.abs(originalStart.lon - firstWaypoint.lon) > 0.0001) {
         L.polyline(
             [[originalStart.lat, originalStart.lon], [firstWaypoint.lat, firstWaypoint.lon]],
-            { color: firstColor, weight: 6, opacity: 0.8 }
+            { color: firstColor, weight: 8, opacity: 0.9 }
         ).addTo(routeLayer);
     }
     
@@ -264,7 +265,7 @@ function displayRoute(data, originalStart, originalEnd) {
         Math.abs(originalEnd.lon - lastWaypoint.lon) > 0.0001) {
         L.polyline(
             [[lastWaypoint.lat, lastWaypoint.lon], [originalEnd.lat, originalEnd.lon]],
-            { color: lastColor, weight: 6, opacity: 0.8 }
+            { color: lastColor, weight: 8, opacity: 0.9 }
         ).addTo(routeLayer);
     }
     
@@ -278,8 +279,8 @@ function displayRoute(data, originalStart, originalEnd) {
             
             L.polyline([[start.lat, start.lon], [end.lat, end.lon]], {
                 color: color,
-                weight: 6,
-                opacity: 0.8
+                weight: 8,
+                opacity: 0.9
             }).addTo(routeLayer);
         }
     }
@@ -292,11 +293,11 @@ function displayRoute(data, originalStart, originalEnd) {
         const color = getPollutionColor(aqi);
         
         L.circleMarker([wp.lat, wp.lon], {
-            radius: 8,
+            radius: 10,
             fillColor: color,
             color: '#fff',
             weight: 2,
-            fillOpacity: 0.8
+            fillOpacity: 0.9
         })
         .bindPopup(`
             <strong>Waypoint ${index}</strong><br>

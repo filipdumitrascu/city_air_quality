@@ -1,5 +1,158 @@
 import math
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Callable
+
+def haversine_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
+    """
+    Calculate distance between coordinates using Haversine formula.
+    Most accurate for geographic coordinates on a sphere.
+    
+    Args:
+        coord1: (lat, lon) first coordinate
+        coord2: (lat, lon) second coordinate
+    
+    Returns:
+        Distance in kilometers
+    """
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    
+    R = 6371  # Earth's radius in km
+    
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    
+    a = (
+        math.sin(dlat / 2) ** 2 +
+        math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
+        math.sin(dlon / 2) ** 2
+    )
+    
+    c = 2 * math.asin(math.sqrt(a))
+    
+    return R * c
+
+def euclidean_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
+    """
+    Calculate Euclidean (straight-line) distance.
+    Fast but less accurate for geographic coordinates.
+    Converts lat/lon to approximate km.
+    
+    Args:
+        coord1: (lat, lon) first coordinate
+        coord2: (lat, lon) second coordinate
+    
+    Returns:
+        Distance in kilometers (approximate)
+    """
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    
+    # Convert degrees to km (approximate at mid-latitudes)
+    # 1 degree latitude ≈ 111 km
+    # 1 degree longitude ≈ 111 * cos(lat) km
+    lat_km = (lat2 - lat1) * 111.0
+    lon_km = (lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
+    
+    return math.sqrt(lat_km ** 2 + lon_km ** 2)
+
+
+def manhattan_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
+    """
+    Calculate Manhattan (taxicab) distance.
+    Sum of absolute differences - useful for grid-based movement.
+    
+    Args:
+        coord1: (lat, lon) first coordinate
+        coord2: (lat, lon) second coordinate
+    
+    Returns:
+        Distance in kilometers (approximate)
+    """
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    
+    # Convert degrees to km
+    lat_km = abs(lat2 - lat1) * 111.0
+    lon_km = abs(lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
+    
+    return lat_km + lon_km
+
+
+def diagonal_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
+    """
+    Calculate Diagonal (Chebyshev) distance.
+    Allows diagonal movement - max of lat/lon differences.
+    
+    Args:
+        coord1: (lat, lon) first coordinate
+        coord2: (lat, lon) second coordinate
+    
+    Returns:
+        Distance in kilometers (approximate)
+    """
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    
+    # Convert degrees to km
+    lat_km = abs(lat2 - lat1) * 111.0
+    lon_km = abs(lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
+    
+    # Diagonal distance formula
+    return max(lat_km, lon_km)
+
+
+def octile_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
+    """
+    Calculate Octile distance.
+    Combination of diagonal and straight movement.
+    Good for 8-directional movement on a grid.
+    
+    Args:
+        coord1: (lat, lon) first coordinate
+        coord2: (lat, lon) second coordinate
+    
+    Returns:
+        Distance in kilometers (approximate)
+    """
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    
+    # Convert degrees to km
+    lat_km = abs(lat2 - lat1) * 111.0
+    lon_km = abs(lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
+    
+    # Octile: diagonal steps cost sqrt(2), straight steps cost 1
+    sqrt2 = math.sqrt(2)
+    return max(lat_km, lon_km) + (sqrt2 - 1) * min(lat_km, lon_km)
+
+
+# Dictionary mapping heuristic names to functions
+HEURISTICS: Dict[str, Callable[[Tuple[float, float], Tuple[float, float]], float]] = {
+    "haversine": haversine_distance,
+    "euclidean": euclidean_distance,
+    "manhattan": manhattan_distance,
+    "diagonal": diagonal_distance,
+    "octile": octile_distance,
+}
+
+def get_heuristic(name: str) -> Callable[[Tuple[float, float], Tuple[float, float]], float]:
+    """
+    Get heuristic function by name.
+    
+    Args:
+        name: Heuristic name ('haversine', 'euclidean', 'manhattan', 'diagonal', 'octile')
+    
+    Returns:
+        Heuristic function
+    
+    Raises:
+        ValueError: If heuristic name is not recognized
+    """
+    name_lower = name.lower()
+    if name_lower not in HEURISTICS:
+        available = ", ".join(HEURISTICS.keys())
+        raise ValueError(f"Unknown heuristic '{name}'. Available: {available}")
+    return HEURISTICS[name_lower]
 
 def calculate_route_stats(
     path: List[Tuple[float, float]],
@@ -58,23 +211,3 @@ def calculate_route_stats(
         "avg_aqi": round(sum(aqi_values) / len(aqi_values), 1),
         "max_aqi": round(max(aqi_values), 1)
     }
-
-def haversine_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
-    """Calculate distance between coordinates in km"""
-    lat1, lon1 = coord1
-    lat2, lon2 = coord2
-    
-    R = 6371
-    
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    
-    a = (
-        math.sin(dlat / 2) ** 2 +
-        math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
-        math.sin(dlon / 2) ** 2
-    )
-    
-    c = 2 * math.asin(math.sqrt(a))
-    
-    return R * c

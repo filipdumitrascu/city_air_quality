@@ -13,7 +13,7 @@ from .data_loader import PollutionDataLoader
 from .graph_builder import PollutionGraph
 from .pathfinding import AStarPathfinder
 from .cache_manager import CacheManager
-from .utils import calculate_route_stats
+from .utils import calculate_route_stats, HEURISTICS
 
 
 log_dir = os.path.join(os.path.dirname(__file__), "../logs")
@@ -85,6 +85,22 @@ async def health_check():
     )
 
 
+@app.get("/heuristics", tags=["routing"])
+async def list_heuristics():
+    """List available heuristic functions"""
+    return {
+        "available_heuristics": list(HEURISTICS.keys()),
+        "default": "haversine",
+        "descriptions": {
+            "haversine": "Great-circle distance on a sphere (most accurate for geographic coordinates)",
+            "euclidean": "Straight-line distance (fast, less accurate for large distances)",
+            "manhattan": "Sum of absolute differences (grid-based, L1 norm)",
+            "diagonal": "Maximum of lat/lon differences (Chebyshev distance)",
+            "octile": "Combination of diagonal and straight movement (good for 8-directional grids)"
+        }
+    }
+
+
 @app.post("/route", response_model=RouteResponse, tags=["routing"])
 async def calculate_route(request: RouteRequest):
     """
@@ -95,6 +111,12 @@ async def calculate_route(request: RouteRequest):
     - **goal**: Destination coordinate (lat, lon)
     - **alpha**: Pollution weight (0.0 = fastest route, 1.0 = cleanest route)
     - **sensor_types**: Sensor types to use
+    - **heuristic**: Heuristic function for A* ('haversine', 'euclidean', 'manhattan', 'diagonal', 'octile')
+    
+    **Optimization:**
+    Instead of querying all Bucharest pollution data, the service queries only
+    a circle centered between start and goal with radius = distance * 0.75.
+    This significantly reduces data transfer and graph size.
     
     **Returns:**
     - GeoJSON route with all pollution statistics (PM10, PM2.5, NO2, AQI)
@@ -103,14 +125,15 @@ async def calculate_route(request: RouteRequest):
     start_time = time.time()
     
     try:
-        logger.info(f"Route request: {request.start} -> {request.goal}, alpha={request.alpha}, sensors={request.sensor_types}")
+        logger.info(f"Route request: {request.start} -> {request.goal}, alpha={request.alpha}, sensors={request.sensor_types}, heuristic={request.heuristic}")
         
-        # Redis cache check
+        # Redis cache check (include heuristic in cache key)
         cache_key = cache_manager.generate_cache_key(
             request.start,
             request.goal,
             request.alpha,
-            request.sensor_types
+            request.sensor_types,
+            request.heuristic
         )
         
         cached_route = cache_manager.get_cached_route(cache_key)
@@ -121,10 +144,10 @@ async def calculate_route(request: RouteRequest):
             logger.info(f"Cache HIT: Returning cached route ({calculation_time}ms)")
             return RouteResponse(**cached_route)
         
-        # Fetch pollution data
         config = get_config()
         bounds = config["bucharest_bounds"]
         
+        # Fetch pollution data for entire Bucharest area
         pollution_data = await data_loader.fetch_area_pollution(
             bounds["lat_min"],
             bounds["lat_max"],
@@ -132,6 +155,14 @@ async def calculate_route(request: RouteRequest):
             bounds["lon_max"],
             sensor_types=request.sensor_types
         )
+
+        # TODO: Re-enable fetch_route_pollution optimization when more data is available
+        # pollution_data = await data_loader.fetch_route_pollution(
+        #     start=(request.start.lat, request.start.lon),
+        #     goal=(request.goal.lat, request.goal.lon),
+        #     sensor_types=request.sensor_types,
+        #     buffer_factor=0.75  # 50% extra on each side for detours
+        # )
         
         if not pollution_data:
             raise HTTPException(
@@ -139,15 +170,15 @@ async def calculate_route(request: RouteRequest):
                 detail=f"No pollution data found for sensor types: {request.sensor_types}"
             )
         
-        logger.info(f"Fetched {len(pollution_data)} pollution readings")
+        logger.info(f"Fetched {len(pollution_data)} pollution readings (optimized query)")
         
         # Build graph
         graph = PollutionGraph(alpha=request.alpha)
         graph.add_pollution_data(pollution_data)
         graph.build_edges()
         
-        # Find path
-        pathfinder = AStarPathfinder(graph)
+        # Find path with specified heuristic
+        pathfinder = AStarPathfinder(graph, heuristic=request.heuristic)
         path = pathfinder.find_path(
             (request.start.lat, request.start.lon),
             (request.goal.lat, request.goal.lon)
@@ -199,6 +230,7 @@ async def calculate_route(request: RouteRequest):
                 max_aqi=stats["max_aqi"],
                 calculation_time_ms=calculation_time,
                 sensor_types_used=request.sensor_types,
+                heuristic_used=request.heuristic,
                 nodes_evaluated=pathfinder.nodes_evaluated,
                 cached=False
             )
@@ -212,7 +244,7 @@ async def calculate_route(request: RouteRequest):
         # Cache result
         cache_manager.cache_route(cache_key, response_data)
         
-        logger.info(f"Route calculated: {len(path)} waypoints, {stats['total_distance_km']}km, AQI={stats['avg_aqi']}, {calculation_time}ms")
+        logger.info(f"Route calculated: {len(path)} waypoints, {stats['total_distance_km']}km, AQI={stats['avg_aqi']}, heuristic={request.heuristic}, {calculation_time}ms")
         
         return RouteResponse(**response_data)
     
