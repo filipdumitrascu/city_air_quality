@@ -18,6 +18,7 @@ spec:
         image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-ingest_service:latest
         ports:
         - containerPort: 8002
+          name: http
         env:
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: /app/credentials.json
@@ -46,6 +47,8 @@ kind: Service
 metadata:
   name: ingest-service
   namespace: default
+  labels:
+    app: ingest-service
 spec:
   selector:
     app: ingest-service
@@ -53,4 +56,5 @@ spec:
   - port: 8002
     targetPort: 8002
     protocol: TCP
+    name: http
   type: ClusterIP

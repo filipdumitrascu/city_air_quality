@@ -14,6 +14,7 @@ from .graph_builder import PollutionGraph
 from .pathfinding import AStarPathfinder
 from .cache_manager import CacheManager
 from .utils import calculate_route_stats, HEURISTICS
+from prometheus_fastapi_instrumentator import Instrumentator
 
 
 log_dir = os.path.join(os.path.dirname(__file__), "../logs")
@@ -54,6 +55,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Prometheus metrics for monitoring
+Instrumentator().instrument(app).expose(app)
 
 
 @app.get("/", tags=["health"])

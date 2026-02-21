@@ -1,0 +1,120 @@
+# Monitors all CityAirQ backend services
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cityairq-client-message-handler
+  namespace: monitoring
+  labels:
+    release: prometheus
+    app: cityairq
+spec:
+  selector:
+    matchLabels:
+      app: client-message-handler
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cityairq-routing-service
+  namespace: monitoring
+  labels:
+    release: prometheus
+    app: cityairq
+spec:
+  selector:
+    matchLabels:
+      app: routing-service
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cityairq-database-service
+  namespace: monitoring
+  labels:
+    release: prometheus
+    app: cityairq
+spec:
+  selector:
+    matchLabels:
+      app: database-service
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cityairq-data-provider-service
+  namespace: monitoring
+  labels:
+    release: prometheus
+    app: cityairq
+spec:
+  selector:
+    matchLabels:
+      app: data-provider-service
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cityairq-frontend
+  namespace: monitoring
+  labels:
+    release: prometheus
+    app: cityairq
+spec:
+  selector:
+    matchLabels:
+      app: frontend
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cityairq-redis
+  namespace: monitoring
+  labels:
+    release: prometheus
+    app: cityairq
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - port: redis
+      interval: 15s

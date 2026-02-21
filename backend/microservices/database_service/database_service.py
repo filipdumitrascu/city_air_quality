@@ -5,6 +5,7 @@ from db import insert_data, fetch_data, init_db, close_db
 import logging
 import os
 from typing import List, Optional
+from prometheus_fastapi_instrumentator import Instrumentator
 import math
 import redis
 import json
@@ -94,6 +95,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Prometheus metrics for monitoring
+Instrumentator().instrument(app).expose(app)
 
 # Helper function
 def get_coordinate_deltas(radius_km: float, latitude_deg: float):

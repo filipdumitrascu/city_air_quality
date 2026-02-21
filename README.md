@@ -7,7 +7,6 @@ Backend infrastructure and AI model for air quality monitoring in Bucharest.
 ## Contributors
 
 * [Filip Dumitrascu](https://github.com/filipdumitrascu)
-* [Bianca Dumitru](https://github.com/dbianca0907)
 
 ## Quick Start
 
@@ -39,7 +38,24 @@ Clean up:
 
 See [README.md](scripts/cloud/README.md) for detailed deployment instructions.
 
-## Documentation
+### Monitoring (after Kubernetes)
+
+Only first time:
+```bash
+./scirpts/monitoring/setup.sh
+```
+
+Optional:
+```bash
+./scripts/monitoring/loadtest.sh
+```
+
+Before deleting cluster:
+```bash
+./scripts/monitoring/cleanup.sh
+./scirpts/cloud/clean.sh
+``` 
+
 
 ## Architecture
 
@@ -58,3 +74,8 @@ See [README.md](scripts/cloud/README.md) for detailed deployment instructions.
 - `data-provider-service`: Data retrieval (port 8001)
 - `routing-service`: A* pathfinding for least polluted routes (port 8003)
 - `redis`: Cache layer (port 6379)
+
+## External IPs
+
+- `frontend` : http://34.55.12.127
+- `grafana` : http://34.56.11.61:80  (username: admin  password: cityairq-admin)

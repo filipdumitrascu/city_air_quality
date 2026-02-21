@@ -18,6 +18,7 @@ spec:
         image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-client_message_handler:latest
         ports:
         - containerPort: 8000
+          name: http
         env:
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: /app/credentials.json
@@ -50,6 +51,8 @@ kind: Service
 metadata:
   name: client-message-handler
   namespace: default
+  labels:
+    app: client-message-handler
 spec:
   selector:
     app: client-message-handler
@@ -57,4 +60,5 @@ spec:
   - port: 8000
     targetPort: 8000
     protocol: TCP
+    name: http
   type: LoadBalancer

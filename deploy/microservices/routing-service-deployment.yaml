@@ -55,6 +55,8 @@ kind: Service
 metadata:
   name: routing-service
   namespace: default
+  labels:
+    app: routing-service
 spec:
   selector:
     app: routing-service
@@ -62,4 +64,5 @@ spec:
   - port: 8000
     targetPort: 8000
     protocol: TCP
+    name: http
   type: ClusterIP

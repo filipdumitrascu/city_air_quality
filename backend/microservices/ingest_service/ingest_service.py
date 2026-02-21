@@ -5,6 +5,7 @@ import pytz
 import os
 import asyncio
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 from contextlib import asynccontextmanager 
 
 
@@ -96,6 +97,9 @@ app = FastAPI(
     lifespan=lifespan,
     version="1.0.0"
 )
+
+# Prometheus metrics for monitoring
+Instrumentator().instrument(app).expose(app)
 
 # NOTE: No HTTP endpoints defined
 # This service operates entirely through PubSub messaging.

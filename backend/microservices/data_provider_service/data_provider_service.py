@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import asyncio
+from prometheus_fastapi_instrumentator import Instrumentator
 import logging
 import os
 import json
@@ -187,6 +188,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Prometheus metrics for monitoring
+Instrumentator().instrument(app).expose(app)
 
 # Cache management endpoints
 @app.get("/cache/stats")
