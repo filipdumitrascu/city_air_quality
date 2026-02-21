@@ -1,6 +1,6 @@
 # CityAirQ
 
-Backend infrastructure and AI model for air quality monitoring in Bucharest.
+Backend infrastructure for air quality monitoring in Bucharest.
 
 ![alt text](docs/notebooks/images/block_diagram.png)
 
@@ -78,5 +78,6 @@ Before deleting cluster:
 
 ## External IPs
 
-- `frontend` : http://34.55.12.127
-- `grafana` : http://34.56.11.61:80  (username: admin  password: cityairq-admin)
+- `frontend` : http://34.56.11.61
+- `grafana` : http://34.122.109.188
+(username: admin  password: cityairq-admin)
