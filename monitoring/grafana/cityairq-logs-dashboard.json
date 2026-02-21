@@ -15,7 +15,7 @@
         "uid": "loki"
       },
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 0,
         "y": 0
@@ -38,7 +38,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{namespace=\"default\", app=\"client-message-handler\"}",
+          "expr": "{app=\"client-message-handler\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -52,7 +52,7 @@
         "uid": "loki"
       },
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 12,
         "y": 0
@@ -75,7 +75,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{namespace=\"default\", app=\"routing-service\"}",
+          "expr": "{app=\"routing-service\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -89,10 +89,10 @@
         "uid": "loki"
       },
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 6
       },
       "id": 3,
       "options": {
@@ -112,7 +112,7 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{namespace=\"default\", app=\"database-service\"}",
+          "expr": "{app=\"database-service\"}",
           "queryType": "range",
           "refId": "A"
         }
@@ -126,10 +126,10 @@
         "uid": "loki"
       },
       "gridPos": {
-        "h": 8,
+        "h": 6,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 6
       },
       "id": 4,
       "options": {
@@ -149,12 +149,49 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{namespace=\"default\", app=\"data-provider-service\"}",
+          "expr": "{app=\"data-provider-service\"}",
           "queryType": "range",
           "refId": "A"
         }
       ],
       "title": "Data_Provider_Service_Logs",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 5,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "editorMode": "code",
+          "expr": "{app=\"ingest-service\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Ingest_Service_Logs",
       "type": "logs"
     }
   ],

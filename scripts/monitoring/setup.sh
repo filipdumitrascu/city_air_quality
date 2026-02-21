@@ -43,6 +43,30 @@ echo ""
 echo "Applying ServiceMonitors..."
 kubectl apply -f "$SCRIPT_DIR/../../monitoring/prometheus/servicemonitor-cityairq.yaml"
 
+# Add Loki as datasource in prometheus-grafana
+echo ""
+echo "Adding Loki datasource to Grafana..."
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-loki
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  loki-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        isDefault: false
+        jsonData:
+          maxLines: 1000
+EOF
+
 # Create ConfigMaps for Grafana dashboards
 echo ""
 echo "Creating Grafana dashboard ConfigMaps..."
