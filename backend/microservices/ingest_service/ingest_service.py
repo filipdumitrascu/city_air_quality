@@ -101,8 +101,12 @@ app = FastAPI(
 # Prometheus metrics for monitoring
 Instrumentator().instrument(app).expose(app)
 
-# NOTE: No HTTP endpoints defined
-# This service operates entirely through PubSub messaging.
-# It has no direct HTTP API - all communication is async via:
-# - Input: 'ingest_service_messages' topic
-# - Output: HTTP calls to Database Service
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring and liveness probes."""
+    return {
+        "status": "healthy",
+        "service": "ingest-service",
+        "subscriber": subscription_name
+    }

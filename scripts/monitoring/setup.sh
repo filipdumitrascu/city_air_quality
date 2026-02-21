@@ -63,6 +63,7 @@ data:
         access: proxy
         url: http://loki:3100
         isDefault: false
+        uid: P8E80F9AEF21F6940
         jsonData:
           maxLines: 1000
 EOF
