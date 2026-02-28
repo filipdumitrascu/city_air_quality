@@ -4,6 +4,7 @@ uvicorn==0.34.0
 httpx==0.25.2
 redis==5.0.1
 pydantic==2.10.5
+polyline==2.0.2
 prometheus-fastapi-instrumentator==7.0.0
 
 # Testing dependencies

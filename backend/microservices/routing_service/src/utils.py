@@ -31,6 +31,7 @@ def haversine_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     
     return R * c
 
+
 def euclidean_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """
     Calculate Euclidean (straight-line) distance.

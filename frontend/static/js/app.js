@@ -52,6 +52,12 @@ function getPollutionColor(aqi) {
     return '#ff0000';
 }
 
+// Get selected transport mode
+function getTransportMode() {
+    const selected = document.querySelector('input[name="transport-mode"]:checked');
+    return selected ? selected.value : 'car';
+}
+
 // Set start point from map click
 function setStartFromMap() {
     clickMode = 'start';
@@ -181,6 +187,7 @@ async function calculateRoute() {
     const endLat = parseFloat(document.getElementById('end-lat').value);
     const endLon = parseFloat(document.getElementById('end-lon').value);
     const alpha = parseFloat(document.getElementById('alpha').value);
+    const transportMode = getTransportMode();
     
     if (isNaN(startLat) || isNaN(startLon) || isNaN(endLat) || isNaN(endLon)) {
         showMessage('Please enter valid coordinates', 'error');
@@ -190,7 +197,8 @@ async function calculateRoute() {
     const originalStart = { lat: startLat, lon: startLon };
     const originalEnd = { lat: endLat, lon: endLon };
     
-    document.getElementById('loading-text').textContent = 'Calculating route...';
+    const modeText = transportMode === 'car' ? 'Calculating driving route...' : 'Calculating walking route...';
+    document.getElementById('loading-text').textContent = modeText;
     document.getElementById('loading').style.display = 'flex';
     
     try {
@@ -202,7 +210,8 @@ async function calculateRoute() {
                 goal: { lat: endLat, lon: endLon },
                 alpha: alpha,
                 sensor_types: sensorTypes,
-                heuristic: 'haversine'
+                heuristic: 'haversine',
+                transport_mode: transportMode
             })
         });
         
@@ -212,6 +221,8 @@ async function calculateRoute() {
             const errorMsg = data.detail || 'Route calculation failed';
             if (errorMsg.includes('No pollution data') || errorMsg.includes('No path found')) {
                 showMessage('Not enough pollution data in the selected area to calculate a route.', 'error');
+            } else if (errorMsg.includes('Google Routes API not configured')) {
+                showMessage('Car routing is not available. Please try "By Foot" mode.', 'error');
             } else {
                 showMessage(`Error: ${errorMsg}`, 'error');
             }
@@ -240,6 +251,7 @@ function displayRoute(data, originalStart, originalEnd) {
     const route = data.route;
     const waypoints = data.waypoints;
     const props = route.properties;
+    const isCarMode = props.transport_mode === 'car';
     
     const firstWaypoint = waypoints[0];
     const lastWaypoint = waypoints[waypoints.length - 1];
@@ -251,64 +263,108 @@ function displayRoute(data, originalStart, originalEnd) {
     const lastAqi = lastWaypoint.aqi || calculateAQI(lastWaypoint.pm10, lastWaypoint.pm25, lastWaypoint.no2);
     const lastColor = getPollutionColor(lastAqi);
     
-    // Line from original start to first waypoint
-    if (Math.abs(originalStart.lat - firstWaypoint.lat) > 0.0001 || 
-        Math.abs(originalStart.lon - firstWaypoint.lon) > 0.0001) {
-        L.polyline(
-            [[originalStart.lat, originalStart.lon], [firstWaypoint.lat, firstWaypoint.lon]],
-            { color: firstColor, weight: 8, opacity: 0.9 }
-        ).addTo(routeLayer);
-    }
-    
-    // Line from last waypoint to original end
-    if (Math.abs(originalEnd.lat - lastWaypoint.lat) > 0.0001 || 
-        Math.abs(originalEnd.lon - lastWaypoint.lon) > 0.0001) {
-        L.polyline(
-            [[lastWaypoint.lat, lastWaypoint.lon], [originalEnd.lat, originalEnd.lon]],
-            { color: lastColor, weight: 8, opacity: 0.9 }
-        ).addTo(routeLayer);
-    }
-    
-    // Main route with pollution colors
-    if (waypoints.length > 1) {
-        for (let i = 0; i < waypoints.length - 1; i++) {
-            const start = waypoints[i];
-            const end = waypoints[i + 1];
-            const aqi = start.aqi || calculateAQI(start.pm10, start.pm25, start.no2);
+    // For car mode, draw the full route from Google (real roads)
+    if (isCarMode && route.geometry && route.geometry.coordinates) {
+        // Convert GeoJSON coordinates [lon, lat] to Leaflet [lat, lon]
+        const routeCoords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+        
+        // Draw route with gradient based on AQI
+        // For simplicity, use average AQI color for the whole route
+        const avgAqi = props.avg_aqi || 50;
+        const routeColor = getPollutionColor(avgAqi);
+        
+        L.polyline(routeCoords, {
+            color: routeColor,
+            weight: 6,
+            opacity: 0.8
+        }).addTo(routeLayer);
+        
+        // Add waypoint markers for sampled points
+        waypoints.forEach((wp, index) => {
+            if (index === 0 || index === waypoints.length - 1) return;
+            
+            const aqi = wp.aqi || calculateAQI(wp.pm10, wp.pm25, wp.no2);
             const color = getPollutionColor(aqi);
             
-            L.polyline([[start.lat, start.lon], [end.lat, end.lon]], {
-                color: color,
-                weight: 8,
-                opacity: 0.9
-            }).addTo(routeLayer);
+            L.circleMarker([wp.lat, wp.lon], {
+                radius: 6,
+                fillColor: color,
+                color: '#fff',
+                weight: 1,
+                fillOpacity: 0.8
+            })
+            .bindPopup(`
+                <strong>Sample Point ${index}</strong><br>
+                <hr style="margin: 5px 0;">
+                PM10: ${(wp.pm10 || 0).toFixed(1)} ug/m3<br>
+                PM2.5: ${(wp.pm25 || 0).toFixed(1)} ug/m3<br>
+                NO2: ${(wp.no2 || 0).toFixed(1)} ug/m3<br>
+                <strong>AQI: ${(wp.aqi || aqi).toFixed(0)}</strong>
+            `)
+            .addTo(routeLayer);
+        });
+    } else {
+        // Foot mode - original behavior with grid-based routing
+        
+        // Line from original start to first waypoint
+        if (Math.abs(originalStart.lat - firstWaypoint.lat) > 0.0001 || 
+            Math.abs(originalStart.lon - firstWaypoint.lon) > 0.0001) {
+            L.polyline(
+                [[originalStart.lat, originalStart.lon], [firstWaypoint.lat, firstWaypoint.lon]],
+                { color: firstColor, weight: 8, opacity: 0.9 }
+            ).addTo(routeLayer);
         }
+        
+        // Line from last waypoint to original end
+        if (Math.abs(originalEnd.lat - lastWaypoint.lat) > 0.0001 || 
+            Math.abs(originalEnd.lon - lastWaypoint.lon) > 0.0001) {
+            L.polyline(
+                [[lastWaypoint.lat, lastWaypoint.lon], [originalEnd.lat, originalEnd.lon]],
+                { color: lastColor, weight: 8, opacity: 0.9 }
+            ).addTo(routeLayer);
+        }
+        
+        // Main route with pollution colors
+        if (waypoints.length > 1) {
+            for (let i = 0; i < waypoints.length - 1; i++) {
+                const start = waypoints[i];
+                const end = waypoints[i + 1];
+                const aqi = start.aqi || calculateAQI(start.pm10, start.pm25, start.no2);
+                const color = getPollutionColor(aqi);
+                
+                L.polyline([[start.lat, start.lon], [end.lat, end.lon]], {
+                    color: color,
+                    weight: 8,
+                    opacity: 0.9
+                }).addTo(routeLayer);
+            }
+        }
+        
+        // Waypoint markers
+        waypoints.forEach((wp, index) => {
+            if (index === 0 || index === waypoints.length - 1) return;
+            
+            const aqi = wp.aqi || calculateAQI(wp.pm10, wp.pm25, wp.no2);
+            const color = getPollutionColor(aqi);
+            
+            L.circleMarker([wp.lat, wp.lon], {
+                radius: 10,
+                fillColor: color,
+                color: '#fff',
+                weight: 2,
+                fillOpacity: 0.9
+            })
+            .bindPopup(`
+                <strong>Waypoint ${index}</strong><br>
+                <hr style="margin: 5px 0;">
+                PM10: ${(wp.pm10 || 0).toFixed(1)} ug/m3<br>
+                PM2.5: ${(wp.pm25 || 0).toFixed(1)} ug/m3<br>
+                NO2: ${(wp.no2 || 0).toFixed(1)} ug/m3<br>
+                <strong>AQI: ${(wp.aqi || aqi).toFixed(0)}</strong>
+            `)
+            .addTo(routeLayer);
+        });
     }
-    
-    // Waypoint markers
-    waypoints.forEach((wp, index) => {
-        if (index === 0 || index === waypoints.length - 1) return;
-        
-        const aqi = wp.aqi || calculateAQI(wp.pm10, wp.pm25, wp.no2);
-        const color = getPollutionColor(aqi);
-        
-        L.circleMarker([wp.lat, wp.lon], {
-            radius: 10,
-            fillColor: color,
-            color: '#fff',
-            weight: 2,
-            fillOpacity: 0.9
-        })
-        .bindPopup(`
-            <strong>Waypoint ${index}</strong><br>
-            <hr style="margin: 5px 0;">
-            PM10: ${(wp.pm10 || 0).toFixed(1)} ug/m3<br>
-            PM2.5: ${(wp.pm25 || 0).toFixed(1)} ug/m3<br>
-            NO2: ${(wp.no2 || 0).toFixed(1)} ug/m3<br>
-            <strong>AQI: ${(wp.aqi || aqi).toFixed(0)}</strong>
-        `)
-        .addTo(routeLayer);
-    });
     
     updateStartMarker(originalStart.lat, originalStart.lon);
     updateEndMarker(originalEnd.lat, originalEnd.lon);
@@ -331,11 +387,32 @@ function displayRouteResults(props) {
     
     resultsSection.style.display = 'block';
     
-    resultsDiv.innerHTML = `
+    const isCarMode = props.transport_mode === 'car';
+    const modeClass = isCarMode ? 'car-mode' : 'foot-mode';
+    const modeLabel = isCarMode ? 'CAR' : 'FOOT';
+    
+    let resultsHtml = `
+        <div class="result-item">
+            <span class="result-label">Mode</span>
+            <span class="result-value ${modeClass}">${modeLabel}</span>
+        </div>
         <div class="result-item">
             <span class="result-label">Distance</span>
             <span class="result-value">${props.distance_km.toFixed(2)} km</span>
         </div>
+    `;
+    
+    // Show duration only for car mode
+    if (isCarMode && props.duration_minutes) {
+        resultsHtml += `
+        <div class="result-item">
+            <span class="result-label">Duration</span>
+            <span class="result-value">${props.duration_minutes.toFixed(1)} min</span>
+        </div>
+        `;
+    }
+    
+    resultsHtml += `
         <div class="result-item">
             <span class="result-label">Avg AQI</span>
             <span class="result-value">${(props.avg_aqi || 0).toFixed(0)}</span>
@@ -356,15 +433,33 @@ function displayRouteResults(props) {
             <span class="result-label">Calculation Time</span>
             <span class="result-value">${props.calculation_time_ms.toFixed(0)} ms</span>
         </div>
+    `;
+    
+    // Show nodes evaluated for foot mode, routes considered for car mode
+    if (isCarMode && props.google_routes_considered) {
+        resultsHtml += `
+        <div class="result-item">
+            <span class="result-label">Routes Compared</span>
+            <span class="result-value">${props.google_routes_considered}</span>
+        </div>
+        `;
+    } else if (props.nodes_evaluated) {
+        resultsHtml += `
         <div class="result-item">
             <span class="result-label">Nodes Evaluated</span>
             <span class="result-value">${props.nodes_evaluated}</span>
         </div>
+        `;
+    }
+    
+    resultsHtml += `
         <div class="result-item">
             <span class="result-label">Cache HIT</span>
             <span class="result-value ${props.cached ? 'cached' : ''}">${props.cached ? 'Yes' : 'No'}</span>
         </div>
     `;
+    
+    resultsDiv.innerHTML = resultsHtml;
 }
 
 // Query pollution data

@@ -24,6 +24,10 @@ class RouteRequest(BaseModel):
         default="haversine",
         description="Heuristic function for A* pathfinding"
     )
+    transport_mode: Literal["foot", "car"] = Field(
+        default="foot",
+        description="Transport mode: 'foot' uses A* on grid, 'car' uses Google Routes API"
+    )
 
 class RouteNode(BaseModel):
     """Single node in the route with all pollution values"""
@@ -42,23 +46,31 @@ class GeoJSONGeometry(BaseModel):
 class GeoJSONProperties(BaseModel):
     """GeoJSON properties with all pollution metrics"""
     distance_km: float
+
     # PM10
     avg_pollution_pm10: float
     max_pollution_pm10: float
+
     # PM2.5
     avg_pollution_pm25: float
     max_pollution_pm25: float
+
     # NO2
     avg_pollution_no2: float
     max_pollution_no2: float
+
     # Combined AQI
     avg_aqi: float
     max_aqi: float
+
     # Metadata
     calculation_time_ms: float
     sensor_types_used: List[str]
-    heuristic_used: str
-    nodes_evaluated: int
+
+    heuristic_used: Optional[str] = None
+    transport_mode: str
+    nodes_evaluated: Optional[int] = None
+    google_routes_considered: Optional[int] = None
     cached: bool
 
 class GeoJSONFeature(BaseModel):
@@ -78,3 +90,4 @@ class HealthResponse(BaseModel):
     service: str
     redis_connected: bool
     database_connected: bool
+    google_routes_configured: Optional[bool] = None

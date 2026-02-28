@@ -126,6 +126,45 @@ input[type="range"] {
     accent-color: #00d9ff;
 }
 
+/* Radio group for transport mode */
+.radio-group {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+
+.radio-label {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #16213e;
+    border: 2px solid #0f3460;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #aaa;
+    font-size: 0.9rem;
+}
+
+.radio-label:hover {
+    border-color: #00d9ff;
+    color: #ccc;
+}
+
+.radio-label input[type="radio"] {
+    display: none;
+}
+
+.radio-label:has(input:checked) {
+    background: linear-gradient(135deg, rgba(0, 217, 255, 0.2), rgba(0, 153, 204, 0.2));
+    border-color: #00d9ff;
+    color: #00d9ff;
+    font-weight: 600;
+}
+
 .btn-primary, .btn-secondary, .btn-small {
     padding: 10px 15px;
     border: none;
@@ -209,6 +248,14 @@ input[type="range"] {
 }
 
 .result-value.cached {
+    color: #00ff88;
+}
+
+.result-value.car-mode {
+    color: #ff9900;
+}
+
+.result-value.foot-mode {
     color: #00ff88;
 }
 

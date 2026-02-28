@@ -41,6 +41,11 @@ kubectl create secret generic credentials-secret \
     --from-file=credentials.json=credentials.json \
     --dry-run=client -o yaml | kubectl apply -f -
 
+# Google Maps key
+kubectl create secret generic google-maps-secret \
+    --from-file=GOOGLE_MAPS_API_KEY=google-maps-key.txt \
+    --dry-run=client -o yaml | kubectl apply -f -
+
 # Database credentials
 kubectl create secret generic database-credentials \
     --from-literal=DB_USER=admin \
