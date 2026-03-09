@@ -197,8 +197,7 @@ async function calculateRoute() {
     const originalStart = { lat: startLat, lon: startLon };
     const originalEnd = { lat: endLat, lon: endLon };
     
-    const modeText = transportMode === 'car' ? 'Calculating driving route...' : 'Calculating walking route...';
-    document.getElementById('loading-text').textContent = modeText;
+    const modeText = transportMode === 'car' ? 'Calculating cycling route...' : 'Calculating walking route...';    document.getElementById('loading-text').textContent = modeText;
     document.getElementById('loading').style.display = 'flex';
     
     try {
@@ -388,8 +387,8 @@ function displayRouteResults(props) {
     resultsSection.style.display = 'block';
     
     const isCarMode = props.transport_mode === 'car';
-    const modeClass = isCarMode ? 'car-mode' : 'foot-mode';
-    const modeLabel = isCarMode ? 'CAR' : 'FOOT';
+    const modeClass = isCarMode ? 'bicycle-mode' : 'foot-mode';
+    const modeLabel = isCarMode ? 'BICYCLE' : 'FOOT';    
     
     let resultsHtml = `
         <div class="result-item">
