@@ -1,24 +1,24 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
+from typing import Optional, List
+from pydantic import BaseModel, Field
 import logging
 import os
 import time
 import json
 import asyncio
 import hashlib
-from fastapi import Header
-from fastapi.responses import JSONResponse
 from queue import Queue
-from fastapi import Request
-from prometheus_fastapi_instrumentator import Instrumentator
-from contextlib import asynccontextmanager
-
-from common.message_queue_googlepubsub.pubsub_client import PubSubClientPublisher, PubSubClientSubscriber
-from common.authentification_service.auth import authorize
 
 import redis
 import httpx
 
-# Connect to Redis for caching query results
+from common.message_queue_googlepubsub.pubsub_client import PubSubClientPublisher, PubSubClientSubscriber
+from common.authentification_service.auth import authorize, optional_authorize
+
+# Redis connection for caching
 redis_client = redis.Redis(
     host=os.getenv('REDIS_HOST', 'redis'),
     port=int(os.getenv('REDIS_PORT', 6379)),
@@ -28,267 +28,303 @@ redis_client = redis.Redis(
     socket_timeout=5
 )
 
-
-# Configure file-based logging for Client message handler
+# Logging configuration
 log_dir = os.path.join(os.path.dirname(__file__), "logs")
 os.makedirs(log_dir, exist_ok=True)
 
-log_file = os.path.join(log_dir, 'client_message_handler.log')
-if not os.path.exists(log_file):
-    open(log_file, 'w').close()
-
 logging.basicConfig(
     level=logging.INFO,
-    filename=log_file,
-    filemode='w',
+    filename=os.path.join(log_dir, 'client_message_handler.log'),
+    filemode='a',
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
 
-# Test Redis connection at startup
-try:
-    redis_client.ping()
-    logging.info(f"Redis connected at {os.getenv('REDIS_HOST', 'redis')}:6379")
-except Exception as e:
-    logging.warning(f"Redis unavailable (caching disabled): {e}")
+class IngestPayload(BaseModel):
+    """Payload for ingesting sensor data into pollution_data table."""
+    sensor_id: str = Field(..., description="Sensor identifier (e.g., 'CityAirQ_001', 'WearAware_005')")
+    sensor_type: str = Field(..., description="Sensor type: 'fixed', 'mobile', 'predicted'")
+    timestamp: int = Field(..., description="Unix timestamp in milliseconds")
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    
+    # Weather data (from BME680 sensor)
+    altitude: Optional[float] = Field(-1, description="Altitude in meters")
+    humidity: Optional[float] = Field(-1, description="Relative humidity %")
+    pressure: Optional[float] = Field(-1, description="Atmospheric pressure hPa")
+    temperature: Optional[float] = Field(-1, description="Temperature in Celsius")
+    
+    # Gas sensors
+    co: Optional[float] = Field(-1, description="Carbon monoxide (MICS sensor)")
+    co2: Optional[float] = Field(-1, description="Carbon dioxide (MHZ19/STCC44)")
+    no2: Optional[float] = Field(-1, description="Nitrogen dioxide (MICS sensor)")
+    nh3: Optional[float] = Field(-1, description="Ammonia (MICS sensor)")
+    vocs: Optional[float] = Field(-1, description="Volatile organic compounds (BME680)")
+    
+    # Particulate matter (PM sensor / BMV080)
+    pm1_0: Optional[float] = Field(-1, description="PM1.0 concentration ug/m3")
+    pm2_5: Optional[float] = Field(-1, description="PM2.5 concentration ug/m3")
+    pm10: Optional[float] = Field(-1, description="PM10 concentration ug/m3")
+
+class ResultsPayload(BaseModel):
+    """Payload for querying pollution data."""
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+    radius: float = Field(..., gt=0, description="Search radius in km")
+    sensor_types: Optional[List[str]] = Field(
+        default=["mobile"],
+        description="Filter by sensor type: 'fixed', 'mobile', 'predicted'"
+    )
+    layers: Optional[List[str]] = Field(
+        default=None,
+        description="Pollutant layers to return: 'pm10', 'pm2_5', 'no2', etc. None = all"
+    )
+
+class RoutePayload(BaseModel):
+    """Payload for route calculation."""
+    start: dict = Field(..., description="Start point: {lat, lon}")
+    goal: dict = Field(..., description="Goal point: {lat, lon}")
+    alpha: float = Field(default=1, ge=0, le=1, description="0=shortest, 1=cleanest")
+    transport_mode: str = Field(default="car", description="'foot' or 'car'")
 
 
 def generate_cache_key(payload: dict) -> str:
-    """
-    Generate unique cache key from query payload.
-    
-    Args:
-        payload: Query parameters (latitude, longitude, radius, layers, sensor_types)
-    
-    Returns:
-        Cache key string (e.g., 'client_query:abc123')
-    """
-    # Extract and sort parameters for consistent keys
+    """Generate unique cache key from query payload."""
     sensor_types = payload.get('sensor_types', ['fixed', 'mobile'])
     if sensor_types:
         sensor_types = sorted(sensor_types)
     else:
         sensor_types = ['fixed', 'mobile']
     
+    layers = payload.get('layers') or []
+    
     key_data = json.dumps({
         'latitude': round(payload.get('latitude', 0), 4),
         'longitude': round(payload.get('longitude', 0), 4),
         'radius': payload.get('radius', 0),
-        'layers': sorted(payload.get('layers', [])),
+        'layers': sorted(layers) if layers else 'all',
         'sensor_types': sensor_types
     }, sort_keys=True)
     
     hash_hex = hashlib.md5(key_data.encode()).hexdigest()
     return f"client_query:{hash_hex}"
 
-
-# Queue to temporarily store responses from data provider service
+# Response queue for PubSub request-response pattern
 response_queue = Queue()
 
-
 async def process_results_message(message):
-    """
-    Callback function triggered when a message arrives from PubSub.
-    
-    Flow:
-    1. Data Provider Service queries database
-    2. Data Provider publishes response to 'results_response_messages' topic
-    3. This subscriber receives the message
-    4. Message is placed in response_queue
-    5. /results/ endpoint retrieves it from queue and returns to client
-    """
+    """Callback for results response from Data Provider Service."""
     try:
-        # Decode message payload
         response_data = json.loads(message.data.decode("utf-8"))
-        
-        # Put response in queue (consumed by /results/ endpoint)
         response_queue.put(response_data)
-        
-        # Acknowledge message to PubSub (won't be redelivered)
         message.ack()
-        
-        logging.info(f"Received response from message queue: {response_data}")
+        logging.info(f"Received response from Data Provider Service")
     except Exception as e:
         logging.error(f"Error processing message: {str(e)}")
-        # Negative acknowledge - message will be redelivered
         message.nack()
 
-
-# Subscribe to 'results_response_messages-sub' topic
-# This listens for responses from Data Provider Service
+# PubSub subscriber for results responses
 results_subscriber = PubSubClientSubscriber("results_response_messages-sub", process_results_message)
 
 
-# Fast API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifespan context manager for FastAPI app."""
+    """Application lifespan - start subscriber on startup."""
+    # Startup
     asyncio.create_task(results_subscriber.start_subscriber())
-    logging.info("Subscriber started and listening for messages on 'results_response_messages-sub'.")
+    logging.info("PubSub subscriber started for 'results_response_messages-sub'")
+    
+    # Test Redis connection
+    try:
+        redis_client.ping()
+        logging.info(f"Redis connected at {os.getenv('REDIS_HOST', 'redis-service')}:6379")
+    except Exception as e:
+        logging.warning(f"Redis unavailable (caching disabled): {e}")
+    
     yield
-    logging.info("Shutting down...")
+    
+    # Shutdown
+    results_subscriber.stop()
+    logging.info("Client Message Handler shutting down")
 
 app = FastAPI(
-    title="Client Message Handler API",
-    description="Handles requests to enter pollution information or read existing data",
-    lifespan=lifespan,
-    version="1.0.0"
+    title="CityAirQ API Gateway",
+    description="API Gateway for pollution monitoring and routing services",
+    version="2.0.0",
+    lifespan=lifespan
 )
 
-
-# Health check endpoints
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {"service": "client_message_handler", "status": "running"}
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "client_message_handler"}
-
-
-# Prometheus metrics for monitoring
+# Prometheus metrics
 Instrumentator().instrument(app).expose(app)
 
 
-# Endpoint ingest
-@app.post("/ingest/")
-async def ingest_data(payload: dict, x_auth_token: str = Header(None)):
-    """Publish sensor data to Ingest Service via PubSub."""
+# HEALTH ENDPOINTS
+@app.get("/")
+async def root():
+    """Root endpoint - service info."""
+    return {
+        "service": "client_message_handler",
+        "version": "2.0.0",
+        "status": "running"
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check for Kubernetes probes."""
+    redis_ok = False
     try:
-        PubSubClientPublisher.publish_message("ingest_service_messages", payload)
-        logging.info("The request was sent to ingest service")
+        redis_ok = redis_client.ping()
+    except:
+        pass
+    
+    return {
+        "status": "healthy",
+        "service": "client_message_handler",
+        "redis": "connected" if redis_ok else "disconnected"
+    }
+
+
+# INGEST ENDPOINT
+@app.post("/ingest/")
+async def ingest_data(
+    payload: IngestPayload,
+    user: Optional[dict] = Depends(optional_authorize)
+):
+    """
+    Ingest sensor data into the database.
+    
+    Accepts data from CityAirQ and WearAware sensors.
+    Publishes to Ingest Service via PubSub for processing.
+    
+    Authentication: Optional (logs user if authenticated)
+    """
+    try:
+        # Convert Pydantic model to dict
+        data = payload.model_dump()
+        
+        # Log authenticated user if present
+        if user:
+            logging.info(f"Ingest request from authenticated user: {user.get('email', 'unknown')}")
+            data['submitted_by'] = user.get('email')
+        
+        # Publish to Ingest Service
+        PubSubClientPublisher.publish_message("ingest_service_messages", data)
+        logging.info(f"Ingest request published for sensor {payload.sensor_id}")
 
         return JSONResponse(
             status_code=200,
-            content={"details": "Data successfully added in the database"},
+            content={
+                "success": True,
+                "message": "Data accepted for processing",
+                "sensor_id": payload.sensor_id
+            }
         )
     except Exception as e:
-        logging.error(f"{str(e)}")
+        logging.error(f"Ingest error: {str(e)}")
         raise HTTPException(
             status_code=400, 
-            detail=f"Error while sending the request into the message queue"
+            detail=f"Failed to process ingest request: {str(e)}"
         )
 
 
-# Endpoint results with redis caching
+# RESULTS ENDPOINT
 @app.post("/results/")
-async def get_data(payload: dict, x_auth_token: str = Header(None)):
+async def get_results(
+    payload: ResultsPayload,
+    user: Optional[dict] = Depends(optional_authorize)
+):
     """
-    Query pollution data via PubSub request-response pattern with Redis caching.
+    Query pollution data within a geographic area.
     
-    Cache strategy:
-    1. Generate cache key from query parameters
-    2. Check Redis for cached result
-    3. If HIT: return cached data immediately
-    4. If MISS: query via PubSub, cache result, return
+    Returns sensor readings matching the location, radius, and filters.
+    Results are cached in Redis for 3 minutes.
     
-    Flow:
-    1. Client sends query (location, radius, pollution layers)
-    2. Publishes to 'results_service_messages' topic
-    3. Data Provider Service receives message
-    4. Data Provider queries database
-    5. Data Provider publishes response to 'results_response_messages'
-    6. Subscriber (process_results_message) puts response in queue
-    7. This endpoint polls queue and returns data to client
-    
-    Args:
-        payload: Query parameters (latitude, longitude, radius, layers)
-        x_auth_token: Authentication token
-    
-    Returns:
-        200: Query results
-        404: Error from data provider
-        408: Timeout (no response within 30 seconds)
-        500: Internal server error
-
-    Cache TTL: 3 minutes
+    Authentication: Optional
     """
+    # Convert to dict for cache key and PubSub
+    query = payload.model_dump()
+    
     # Redis cache check
-    cache_key = generate_cache_key(payload)
+    cache_key = generate_cache_key(query)
     
     try:
         cached_result = redis_client.get(cache_key)
         if cached_result:
             logging.info(f"Cache HIT: {cache_key}")
             return {"data": json.loads(cached_result), "cached": True}
-        else:
-            logging.info(f"Cache MISS: {cache_key}")
+        logging.info(f"Cache MISS: {cache_key}")
     except Exception as e:
         logging.warning(f"Redis error (continuing without cache): {e}")
     
-    # Pubsub query (Cache miss)
+    # Query via PubSub
     try:
-        PubSubClientPublisher.publish_message("results_service_messages", payload)
-        logging.info("The request was published in the queue and waiting for response....")
+        PubSubClientPublisher.publish_message("results_service_messages", query)
+        logging.info(f"Results query published, waiting for response...")
         
-        # Poll response_queue for up to 30 seconds
+        # Poll response queue (30 second timeout)
         start_time = time.time()
         while response_queue.empty():
             if time.time() - start_time > 30:
                 raise HTTPException(
                     status_code=408, 
-                    detail="Timeout waiting for response from results service"
+                    detail="Timeout waiting for response from Data Provider Service"
                 )
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
         
         response_data = response_queue.get_nowait()
-        logging.info(f"Received response: {response_data}")
         
+        # Handle error response
         if "error" in response_data:
-            error_message = json.loads(response_data["error"])
-            logging.error(f"Error received from results service: {error_message}")
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Error received from results service: {error_message}"
-            )
+            error_msg = response_data.get("error", "Unknown error")
+            logging.error(f"Data Provider error: {error_msg}")
+            raise HTTPException(status_code=500, detail=str(error_msg))
         
-        response_data = json.loads(response_data)
+        # Parse response if string
+        if isinstance(response_data, str):
+            response_data = json.loads(response_data)
         
         # Cache result
         try:
-            redis_client.setex(
-                cache_key,
-                180,  # TTL in seconds
-                json.dumps(response_data)
-            )
+            redis_client.setex(cache_key, 180, json.dumps(response_data))
             logging.info(f"Cached result: {cache_key} (TTL: 180s)")
         except Exception as e:
             logging.warning(f"Failed to cache result: {e}")
         
         return {"data": response_data, "cached": False}
         
-    except HTTPException as e:
-        logging.error(f"{str(e)}")
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(f"Unexpected error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logging.error(f"Results query error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-# Endpoint route
+# ROUTE ENDPOINT
 @app.post("/route/")
-async def calculate_route(payload: dict, x_auth_token: str = Header(None)):
+async def calculate_route(
+    payload: RoutePayload,
+    user: Optional[dict] = Depends(optional_authorize)
+):
     """
-    Calculate pollution-aware route via Routing Service.
+    Calculate pollution-aware route between two points.
     
-    Flow:
-    1. Client sends route request (start, goal, alpha, sensor_types)
-    2. Forward to Routing Service via HTTP
-    3. Routing Service calculates A* path with Redis caching
-    4. Returns GeoJSON route with statistics
+    Forwards request to Routing Service which uses A* algorithm
+    with pollution weighting.
+    
+    Authentication: Optional
     """
+    routing_service_url = os.getenv('ROUTING_SERVICE_URL', 'http://routing-service:8000')
+    
     try:
-        # Forward to Routing Service
-        routing_service_url = os.getenv('ROUTING_SERVICE_URL', 'http://routing-service:8000')
+        # Convert to dict
+        route_request = payload.model_dump()
         
-        logging.info(f"Forwarding route request to {routing_service_url}")
+        logging.info(f"Route request: {route_request['start']} -> {route_request['goal']}")
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{routing_service_url}/route",
-                json=payload
+                json=route_request
             )
         
         if response.status_code == 200:
@@ -304,21 +340,18 @@ async def calculate_route(payload: dict, x_auth_token: str = Header(None)):
             
     except httpx.TimeoutException:
         logging.error("Routing Service timeout")
-        raise HTTPException(
-            status_code=504,
-            detail="Routing Service timeout"
-        )
-    except HTTPException as e:
-        raise e
+        raise HTTPException(status_code=504, detail="Routing Service timeout")
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(f"Unexpected error: {str(e)}")
+        logging.error(f"Route calculation error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-# Cache management endpoints
+# CACHE MANAGEMENT ENDPOINTS
 @app.get("/cache/stats")
 async def cache_stats():
-    """Get Redis cache statistics for Client Message Handler"""
+    """Get Redis cache statistics."""
     try:
         info = redis_client.info("stats")
         client_keys = len(redis_client.keys("client_query:*"))
@@ -329,23 +362,24 @@ async def cache_stats():
             "hits": info.get("keyspace_hits", 0),
             "misses": info.get("keyspace_misses", 0),
             "hit_rate_percent": round(
-                (info.get("keyspace_hits", 0) / max(info.get("total_commands_processed", 1), 1)) * 100, 
+                info.get("keyspace_hits", 0) / max(info.get("total_commands_processed", 1), 1) * 100,
                 2
             ),
-            "cached_client_queries": client_keys
+            "cached_queries": client_keys
         }
     except Exception as e:
         return {"connected": False, "error": str(e)}
 
+
 @app.delete("/cache/clear")
 async def clear_cache():
-    """Clear cached queries for Client Message Handler"""
+    """Clear all cached queries."""
     try:
         keys = redis_client.keys("client_query:*")
         if keys:
             redis_client.delete(*keys)
-            logging.info(f"Cleared {len(keys)} cached client queries")
+            logging.info(f"Cleared {len(keys)} cached queries")
             return {"cleared": len(keys)}
-        return {"cleared": 0, "message": "No cached queries to clear"}
+        return {"cleared": 0, "message": "No cached queries"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Cache clear error: {str(e)}")

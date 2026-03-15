@@ -1,12 +1,12 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copy files
+# Copy application files
 COPY microservices/client_message_handler /app
 COPY common /app/common
 
-# Create __init__.py for common module
+# Create __init__.py files for Python module imports
 RUN touch /app/common/__init__.py && \
     touch /app/common/authentification_service/__init__.py && \
     touch /app/common/message_queue_googlepubsub/__init__.py
