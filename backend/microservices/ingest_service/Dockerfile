@@ -1,13 +1,13 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copy files
+# Copy application files
 COPY microservices/ingest_service /app
 COPY common /app/common
 COPY microservices/database_service/client /app/database_service/client
 
-# Create __init__.py files
+# Create __init__.py files for Python module imports
 RUN mkdir -p /app/database_service && \
     touch /app/database_service/__init__.py && \
     touch /app/database_service/client/__init__.py && \

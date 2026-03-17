@@ -2,19 +2,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 from schemas import InsertPollutionDataRequest
 from db import insert_data, fetch_data, init_db, close_db
+from prometheus_fastapi_instrumentator import Instrumentator
+from typing import List, Optional
 import logging
 import os
-from typing import List, Optional
-from prometheus_fastapi_instrumentator import Instrumentator
 import math
 import redis
 import json
 import hashlib
 
 
-# Connect to Redis for query result caching
+# Redis connection for caching
 redis_client = redis.Redis(
-    host=os.getenv('REDIS_HOST', 'redis'),
+    host=os.getenv('REDIS_HOST', 'redis-service'),
     port=int(os.getenv('REDIS_PORT', 6379)),
     db=int(os.getenv('REDIS_DB', 0)),
     decode_responses=True,
@@ -22,65 +22,64 @@ redis_client = redis.Redis(
     socket_timeout=5
 )
 
-
-# Configure file-based logging for Database Service
-log_dir = os.path.join(os.path.dirname(__file__), "logs")
-os.makedirs(log_dir, exist_ok=True)
-
-log_file = os.path.join(log_dir, 'database_service.log')
-if not os.path.exists(log_file):
-    open(log_file, 'w').close()
-
+# Logging to stdout only
 logging.basicConfig(
     level=logging.INFO,
-    filename=log_file,
-    filemode='w',
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+# Available layers matching pollution_data schema
+AVAILABLE_LAYERS = [
+    "pm10", "pm2_5", "pm1_0",  # Particulate matter
+    "no2", "co", "co2", "nh3", "vocs",  # Gases
+    "temperature", "humidity", "pressure", "altitude"  # Weather
+]
 
-# Test Redis connection at startup
-try:
-    redis_client.ping()
-    logging.info(f"Redis connected at {os.getenv('REDIS_HOST', 'redis')}:6379")
-except Exception as e:
-    logging.warning(f"Redis unavailable (caching disabled): {e}")
 
-
-def generate_cache_key(latitude: float, longitude: float, radius: float, layers: List[str], sensor_types: List[str] = None) -> str:
-    """
-    Generate unique cache key for query.
+# Helper Functions
+def generate_cache_key(latitude: float, longitude: float, radius: float, 
+                       layers: List[str], sensor_types: List[str] = None) -> str:
+    """Generate unique cache key for query."""
+    sensor_types_sorted = sorted(sensor_types) if sensor_types else ['fixed', 'mobile']
+    layers_sorted = sorted(layers) if layers else 'all'
     
-    Args:
-        latitude: Query center latitude
-        longitude: Query center longitude
-        radius: Search radius in km
-        layers: List of pollution layers
-        sensor_types: List of sensor types to filter
+    key_data = json.dumps({
+        'lat': round(latitude, 4),
+        'lon': round(longitude, 4),
+        'radius': radius,
+        'layers': layers_sorted,
+        'sensor_types': sensor_types_sorted
+    }, sort_keys=True)
     
-    Returns:
-        Cache key string
-    """
-    sensor_types_str = sorted(sensor_types) if sensor_types else ['fixed', 'mobile']
-    key_data = f"{latitude:.4f},{longitude:.4f},{radius:.2f},{sorted(layers)},{sensor_types_str}"
     hash_hex = hashlib.md5(key_data.encode()).hexdigest()
-    return f"query:{hash_hex}"
+    return f"db_query:{hash_hex}"
+
+def get_coordinate_deltas(radius_km: float, latitude_deg: float):
+    """Calculate latitude and longitude deltas for a given radius in km."""
+    delta_lat = radius_km / 111.32
+    lat_rad = math.radians(latitude_deg)
+    km_per_deg_lng = 111.32 * math.cos(lat_rad)
+    delta_lng = radius_km / km_per_deg_lng if km_per_deg_lng > 0 else radius_km / 111.32
+    return delta_lat, delta_lng
 
 
 # Fast API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Initialize database connection pool on startup.
-    Close all connections on shutdown.
-    """
+    """Initialize database connection pool on startup."""
     try:
         init_db()
-        logging.info("Database connection initialized")
+        logging.info("Database connection pool initialized")
     except Exception as e:
         logging.error(f"Database NOT available at startup: {e}")
     
-    yield  # App runs here
+    try:
+        redis_client.ping()
+        logging.info(f"Redis connected at {os.getenv('REDIS_HOST', 'redis-service')}:6379")
+    except Exception as e:
+        logging.warning(f"Redis unavailable (caching disabled): {e}")
+    
+    yield
     
     try:
         close_db()
@@ -88,76 +87,82 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+
 app = FastAPI(
-    title="Database Service API",
-    description="Microservice that communicates with QuestDB",
-    lifespan=lifespan,
-    version="1.0.0"
+    title="Database Service",
+    description="QuestDB interface for pollution data",
+    version="2.0.0",
+    lifespan=lifespan
 )
 
-# Prometheus metrics for monitoring
 Instrumentator().instrument(app).expose(app)
 
-# Helper function
-def get_coordinate_deltas(radius_km: float, latitude_deg: float):
-    """
-    Calculate latitude and longitude deltas for a given radius in km.
-    """
-    delta_lat = radius_km / 111.32
-    lat_rad = math.radians(latitude_deg)
-    km_per_deg_lng = 111.32 * math.cos(lat_rad)
-    delta_lng = radius_km / km_per_deg_lng
-    return delta_lat, delta_lng
 
-
-# Health check endpoints
+# HEALTH ENDPOINTS
 @app.get("/")
 async def root():
-    """Root endpoint"""
-    return {"service": "database_service", "status": "running"}
+    return {
+        "service": "database_service",
+        "version": "2.0.0",
+        "status": "running"
+    }
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "database_service"}
+    redis_ok = False
+    try:
+        redis_ok = redis_client.ping()
+    except:
+        pass
+    
+    return {
+        "status": "healthy",
+        "service": "database_service",
+        "redis": "connected" if redis_ok else "disconnected"
+    }
 
 
-# Endpoint (data insertion)
+# DATA INSERTION ENDPOINT
 @app.post("/add_data/")
 async def add_data(payload: InsertPollutionDataRequest):
+    """
+    Insert sensor data into pollution_data table.
+    
+    Accepts data from CityAirQ and WearAware sensors with all
+    pollution metrics and weather data.
+    """
     try:
-        pollution_data = {
-            "PM10": None,
-            "PM2.5": None,
-            "NO2": None
-        }
-
-        for entry in payload.data:
-            dimension = entry.dimension
-            if dimension == "PM2_5":
-                pollution_data["PM2.5"] = entry.value
-            elif dimension in pollution_data:
-                pollution_data[dimension] = entry.value
-
+        # Build params tuple matching pollution_data schema
         params = (
-            payload.clientId,
+            payload.sensor_id,
+            payload.sensor_type,
             payload.timestamp,
-            payload.location.latitude,
-            payload.location.longitude,
-            pollution_data["PM10"],
-            pollution_data["PM2.5"],
-            pollution_data["NO2"]
+            payload.latitude,
+            payload.longitude,
+            payload.altitude,
+            payload.humidity,
+            payload.pressure,
+            payload.temperature,
+            payload.co,
+            payload.co2,
+            payload.no2,
+            payload.nh3,
+            payload.pm1_0,
+            payload.pm2_5,
+            payload.pm10,
+            payload.vocs
         )
 
         insert_data(params)
-        return {"success": True}
+        logging.info(f"Inserted data for sensor {payload.sensor_id}")
+        return {"success": True, "sensor_id": payload.sensor_id}
 
     except Exception as e:
-        logging.error(f"Error adding data {str(e)}")
+        logging.error(f"Error adding data: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Error adding data: {str(e)}")
 
 
-# Endpoint (data retrieval) with redis caching and sensor_types filter
+# DATA RETRIEVAL ENDPOINT
 @app.get("/get_data/")
 async def get_data(
     latitude: float = Query(...),
@@ -167,24 +172,24 @@ async def get_data(
     sensor_types: Optional[List[str]] = Query(None)
 ):
     """
-    Retrieve pollution data within a geographic radius with Redis caching.
+    Retrieve pollution data within a geographic radius.
     
     Args:
         latitude: Center point latitude
         longitude: Center point longitude
         radius: Search radius in kilometers
         layers: Optional list of pollution metrics to retrieve
-        sensor_types: Optional list of sensor types to filter ('fixed', 'mobile')
+        sensor_types: Optional list of sensor types ('fixed', 'mobile', 'predicted')
     
     Returns:
-        List of sensor readings
+        List of sensor readings with requested metrics
     """
+    # Default layers and sensor types
     if not layers:
-        layers = ["Temperature", "Humidity", "Pressure", "Altitude", "CO2", "PM1_0", "PM2_5", "PM10"]
+        layers = AVAILABLE_LAYERS
     
-    # Default to both sensor types if not specified
     if not sensor_types:
-        sensor_types = ["fixed", "mobile"]
+        sensor_types = ["mobile"]
 
     # Redis cache check
     cache_key = generate_cache_key(latitude, longitude, radius, layers, sensor_types)
@@ -194,64 +199,53 @@ async def get_data(
         if cached_result:
             logging.info(f"Cache HIT: {cache_key}")
             return json.loads(cached_result)
-        else:
-            logging.info(f"Cache MISS: {cache_key}")
+        logging.info(f"Cache MISS: {cache_key}")
     except Exception as e:
-        logging.warning(f"Redis error (continuing without cache): {e}")
+        logging.warning(f"Redis error: {e}")
 
-    # Query database (Cache miss)
+    # Query database
     try:
         delta_lat, delta_lng = get_coordinate_deltas(radius, latitude)
         
-        # Pass sensor_types to fetch_data
         params = (layers, latitude, delta_lat, longitude, delta_lng, sensor_types)
-        
         results = fetch_data(params)
         
-        # Cache result
+        # Cache result (TTL: 5 minutes)
         try:
-            redis_client.setex(
-                cache_key,
-                300,
-                json.dumps(results)
-            )
-            logging.info(f"Cached result: {cache_key}")
+            redis_client.setex(cache_key, 300, json.dumps(results))
+            logging.info(f"Cached result: {cache_key} (TTL: 300s)")
         except Exception as e:
-            logging.warning(f"Failed to cache result: {e}")
+            logging.warning(f"Failed to cache: {e}")
         
         return results
         
-    except HTTPException as http_exc:
-        logging.error(f"HTTP Exception: {http_exc}")
-        raise http_exc
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error fetching data: {str(e)}")
-        logging.exception(e)
-        raise HTTPException(status_code=500, detail=f"Error fetching measurements: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
 
 
-# Cache management endpoints
+# CACHE MANAGEMENT
 @app.get("/cache/stats")
 async def cache_stats():
     """Get Redis cache statistics."""
     try:
         info = redis_client.info("stats")
-        keyspace = redis_client.info("keyspace")
         memory = redis_client.info("memory")
-        
-        total_commands = info.get("total_commands_processed", 0)
-        hits = info.get("keyspace_hits", 0)
-        misses = info.get("keyspace_misses", 0)
+        db_keys = len(redis_client.keys("db_query:*"))
         
         return {
             "connected": True,
-            "total_commands": total_commands,
-            "hits": hits,
-            "misses": misses,
-            "hit_rate_percent": round((hits / max(total_commands, 1)) * 100, 2),
-            "cached_keys": keyspace.get("db0", {}).get("keys", 0) if "db0" in keyspace else 0,
-            "memory_used_mb": round(memory["used_memory"] / 1024 / 1024, 2),
-            "memory_peak_mb": round(memory.get("used_memory_peak", 0) / 1024 / 1024, 2)
+            "total_commands": info.get("total_commands_processed", 0),
+            "hits": info.get("keyspace_hits", 0),
+            "misses": info.get("keyspace_misses", 0),
+            "hit_rate_percent": round(
+                info.get("keyspace_hits", 0) / max(info.get("total_commands_processed", 1), 1) * 100,
+                2
+            ),
+            "cached_queries": db_keys,
+            "memory_used_mb": round(memory.get("used_memory", 0) / 1024 / 1024, 2)
         }
     except Exception as e:
         return {"connected": False, "error": str(e)}
@@ -260,12 +254,11 @@ async def cache_stats():
 async def clear_cache():
     """Clear all cached queries."""
     try:
-        keys = redis_client.keys("query:*")
+        keys = redis_client.keys("db_query:*")
         if keys:
             redis_client.delete(*keys)
             logging.info(f"Cleared {len(keys)} cached queries")
-            return {"cleared": len(keys), "message": f"Cleared {len(keys)} cached queries"}
-        return {"cleared": 0, "message": "No cached queries to clear"}
+            return {"cleared": len(keys)}
+        return {"cleared": 0, "message": "No cached queries"}
     except Exception as e:
-        logging.error(f"Error clearing cache: {e}")
-        raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Cache clear error: {str(e)}")

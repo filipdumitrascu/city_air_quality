@@ -4,30 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CityAirQ - Air Quality Routing</title>
-    
-    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    
-    <!-- Custom CSS -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <div class="container">
-        <!-- Sidebar -->
         <div class="sidebar">
             <h1>CityAirQ</h1>
             <p class="subtitle">Pollution-Aware Routing</p>
             
-            <!-- Route Form -->
             <div class="form-section">
                 <h3>Calculate Route</h3>
                 
-                <!-- Transport Mode - FIRST -->
                 <div class="form-group">
                     <label>Transport Mode</label>
                     <div class="radio-group">
                         <label class="radio-label">
-                            <input type="radio" name="transport-mode" value="car" checked>
+                            <input type="radio" name="transport-mode" value="bicycle" checked>
                             By Bicycle
                         </label>
                         <label class="radio-label">
@@ -79,7 +72,6 @@
                 </div>
             </div>
             
-            <!-- Query Form -->
             <div class="form-section">
                 <h3>Query Pollution Data</h3>
                 
@@ -112,18 +104,15 @@
                 </div>
             </div>
 
-            <!-- Results -->
             <div class="results-section" id="results-section" style="display: none;">
                 <h3>Results</h3>
                 <div id="route-results"></div>
             </div>
         </div>
         
-        <!-- Map -->
         <div class="map-container">
             <div id="map"></div>
             
-            <!-- Legend -->
             <div class="legend">
                 <h4>Air Quality Index</h4>
                 <div class="legend-item"><span class="legend-color" style="background: #00ff00;"></span> Good (0-50)</div>
@@ -138,16 +127,12 @@
         </div>
     </div>
     
-    <!-- Loading overlay -->
     <div class="loading-overlay" id="loading" style="display: none;">
         <div class="spinner"></div>
         <p id="loading-text">Processing...</p>
     </div>
     
-    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <!-- Custom JS -->
     <script src="/static/js/app.js"></script>
 </body>
 </html>

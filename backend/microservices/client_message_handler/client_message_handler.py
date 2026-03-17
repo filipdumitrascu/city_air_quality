@@ -16,11 +16,12 @@ import redis
 import httpx
 
 from common.message_queue_googlepubsub.pubsub_client import PubSubClientPublisher, PubSubClientSubscriber
-from common.authentification_service.auth import authorize, optional_authorize
+from common.authentification_service.auth import authorize
+
 
 # Redis connection for caching
 redis_client = redis.Redis(
-    host=os.getenv('REDIS_HOST', 'redis'),
+    host=os.getenv('REDIS_HOST', 'redis-service'),
     port=int(os.getenv('REDIS_PORT', 6379)),
     db=int(os.getenv('REDIS_DB', 0)),
     decode_responses=True,
@@ -28,46 +29,53 @@ redis_client = redis.Redis(
     socket_timeout=5
 )
 
-# Logging configuration
-log_dir = os.path.join(os.path.dirname(__file__), "logs")
-os.makedirs(log_dir, exist_ok=True)
-
+# Logging to stdout only (visible via kubectl logs)
 logging.basicConfig(
     level=logging.INFO,
-    filename=os.path.join(log_dir, 'client_message_handler.log'),
-    filemode='a',
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
 
 class IngestPayload(BaseModel):
-    """Payload for ingesting sensor data into pollution_data table."""
+    """
+    Payload for ingesting sensor data into pollution_data table.
+    
+    Required fields: sensor_id, sensor_type, timestamp, latitude, longitude
+    Optional fields default to -1 if not provided.
+    """
+    # Required fields
     sensor_id: str = Field(..., description="Sensor identifier (e.g., 'CityAirQ_001', 'WearAware_005')")
     sensor_type: str = Field(..., description="Sensor type: 'fixed', 'mobile', 'predicted'")
     timestamp: int = Field(..., description="Unix timestamp in milliseconds")
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     
-    # Weather data (from BME680 sensor)
-    altitude: Optional[float] = Field(-1, description="Altitude in meters")
-    humidity: Optional[float] = Field(-1, description="Relative humidity %")
-    pressure: Optional[float] = Field(-1, description="Atmospheric pressure hPa")
-    temperature: Optional[float] = Field(-1, description="Temperature in Celsius")
+    # Weather data (BME680 sensor)
+    altitude: Optional[float] = Field(default=-1, description="Altitude in meters")
+    humidity: Optional[float] = Field(default=-1, description="Relative humidity %")
+    pressure: Optional[float] = Field(default=-1, description="Atmospheric pressure hPa")
+    temperature: Optional[float] = Field(default=-1, description="Temperature in Celsius")
     
     # Gas sensors
-    co: Optional[float] = Field(-1, description="Carbon monoxide (MICS sensor)")
-    co2: Optional[float] = Field(-1, description="Carbon dioxide (MHZ19/STCC44)")
-    no2: Optional[float] = Field(-1, description="Nitrogen dioxide (MICS sensor)")
-    nh3: Optional[float] = Field(-1, description="Ammonia (MICS sensor)")
-    vocs: Optional[float] = Field(-1, description="Volatile organic compounds (BME680)")
+    co: Optional[float] = Field(default=-1, description="Carbon monoxide (MICS sensor)")
+    co2: Optional[float] = Field(default=-1, description="Carbon dioxide (MHZ19/STCC44)")
+    no2: Optional[float] = Field(default=-1, description="Nitrogen dioxide (MICS sensor)")
+    nh3: Optional[float] = Field(default=-1, description="Ammonia (MICS sensor)")
+    vocs: Optional[float] = Field(default=-1, description="Volatile organic compounds (BME680)")
     
     # Particulate matter (PM sensor / BMV080)
-    pm1_0: Optional[float] = Field(-1, description="PM1.0 concentration ug/m3")
-    pm2_5: Optional[float] = Field(-1, description="PM2.5 concentration ug/m3")
-    pm10: Optional[float] = Field(-1, description="PM10 concentration ug/m3")
+    pm1_0: Optional[float] = Field(default=-1, description="PM1.0 concentration ug/m3")
+    pm2_5: Optional[float] = Field(default=-1, description="PM2.5 concentration ug/m3")
+    pm10: Optional[float] = Field(default=-1, description="PM10 concentration ug/m3")
+
 
 class ResultsPayload(BaseModel):
-    """Payload for querying pollution data."""
+    """
+    Payload for querying pollution data.
+    
+    Required: latitude, longitude, radius
+    Optional: sensor_types (default: mobile), layers (default: all)
+    """
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     radius: float = Field(..., gt=0, description="Search radius in km")
@@ -80,14 +88,26 @@ class ResultsPayload(BaseModel):
         description="Pollutant layers to return: 'pm10', 'pm2_5', 'no2', etc. None = all"
     )
 
+
 class RoutePayload(BaseModel):
-    """Payload for route calculation."""
+    """
+    Payload for route calculation.
+    
+    Required: start, goal (each with lat, lon)
+    Optional: sensor_types (default: mobile), alpha (default: 1 = cleanest),
+      transport_mode (default: car)
+    """
     start: dict = Field(..., description="Start point: {lat, lon}")
     goal: dict = Field(..., description="Goal point: {lat, lon}")
     alpha: float = Field(default=1, ge=0, le=1, description="0=shortest, 1=cleanest")
+    sensor_types: Optional[List[str]] = Field(
+        default=["mobile"],
+        description="Filter by sensor type: 'fixed', 'mobile', 'predicted'"
+    )
     transport_mode: str = Field(default="car", description="'foot' or 'car'")
 
 
+# Helper functions
 def generate_cache_key(payload: dict) -> str:
     """Generate unique cache key from query payload."""
     sensor_types = payload.get('sensor_types', ['fixed', 'mobile'])
@@ -97,7 +117,7 @@ def generate_cache_key(payload: dict) -> str:
         sensor_types = ['fixed', 'mobile']
     
     layers = payload.get('layers') or []
-    
+
     key_data = json.dumps({
         'latitude': round(payload.get('latitude', 0), 4),
         'longitude': round(payload.get('longitude', 0), 4),
@@ -118,7 +138,7 @@ async def process_results_message(message):
         response_data = json.loads(message.data.decode("utf-8"))
         response_queue.put(response_data)
         message.ack()
-        logging.info(f"Received response from Data Provider Service")
+        logging.info("Received response from Data Provider Service")
     except Exception as e:
         logging.error(f"Error processing message: {str(e)}")
         message.nack()
@@ -127,14 +147,13 @@ async def process_results_message(message):
 results_subscriber = PubSubClientSubscriber("results_response_messages-sub", process_results_message)
 
 
+# Fast API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - start subscriber on startup."""
-    # Startup
     asyncio.create_task(results_subscriber.start_subscriber())
     logging.info("PubSub subscriber started for 'results_response_messages-sub'")
     
-    # Test Redis connection
     try:
         redis_client.ping()
         logging.info(f"Redis connected at {os.getenv('REDIS_HOST', 'redis-service')}:6379")
@@ -143,7 +162,6 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Shutdown
     results_subscriber.stop()
     logging.info("Client Message Handler shutting down")
 
@@ -188,28 +206,20 @@ async def health_check():
 @app.post("/ingest/")
 async def ingest_data(
     payload: IngestPayload,
-    user: Optional[dict] = Depends(optional_authorize)
+    user: dict = Depends(authorize)
 ):
     """
     Ingest sensor data into the database.
     
     Accepts data from CityAirQ and WearAware sensors.
-    Publishes to Ingest Service via PubSub for processing.
-    
-    Authentication: Optional (logs user if authenticated)
+    Authentication: REQUIRED (Google OAuth)
     """
     try:
-        # Convert Pydantic model to dict
         data = payload.model_dump()
-        
-        # Log authenticated user if present
-        if user:
-            logging.info(f"Ingest request from authenticated user: {user.get('email', 'unknown')}")
-            data['submitted_by'] = user.get('email')
-        
-        # Publish to Ingest Service
+        data['submitted_by'] = user.get('email')
+
         PubSubClientPublisher.publish_message("ingest_service_messages", data)
-        logging.info(f"Ingest request published for sensor {payload.sensor_id}")
+        logging.info(f"Ingest from {user.get('email')} for sensor {payload.sensor_id}")
 
         return JSONResponse(
             status_code=200,
@@ -229,24 +239,18 @@ async def ingest_data(
 
 # RESULTS ENDPOINT
 @app.post("/results/")
-async def get_results(
-    payload: ResultsPayload,
-    user: Optional[dict] = Depends(optional_authorize)
-):
+async def get_results(payload: ResultsPayload):
     """
     Query pollution data within a geographic area.
     
     Returns sensor readings matching the location, radius, and filters.
     Results are cached in Redis for 3 minutes.
-    
-    Authentication: Optional
+    Authentication: Not required
     """
-    # Convert to dict for cache key and PubSub
     query = payload.model_dump()
-    
-    # Redis cache check
     cache_key = generate_cache_key(query)
     
+    # Check cache
     try:
         cached_result = redis_client.get(cache_key)
         if cached_result:
@@ -254,12 +258,12 @@ async def get_results(
             return {"data": json.loads(cached_result), "cached": True}
         logging.info(f"Cache MISS: {cache_key}")
     except Exception as e:
-        logging.warning(f"Redis error (continuing without cache): {e}")
+        logging.warning(f"Redis error: {e}")
     
     # Query via PubSub
     try:
         PubSubClientPublisher.publish_message("results_service_messages", query)
-        logging.info(f"Results query published, waiting for response...")
+        logging.info("Results query published, waiting for response...")
         
         # Poll response queue (30 second timeout)
         start_time = time.time()
@@ -288,7 +292,7 @@ async def get_results(
             redis_client.setex(cache_key, 180, json.dumps(response_data))
             logging.info(f"Cached result: {cache_key} (TTL: 180s)")
         except Exception as e:
-            logging.warning(f"Failed to cache result: {e}")
+            logging.warning(f"Failed to cache: {e}")
         
         return {"data": response_data, "cached": False}
         
@@ -301,24 +305,17 @@ async def get_results(
 
 # ROUTE ENDPOINT
 @app.post("/route/")
-async def calculate_route(
-    payload: RoutePayload,
-    user: Optional[dict] = Depends(optional_authorize)
-):
+async def calculate_route(payload: RoutePayload):
     """
     Calculate pollution-aware route between two points.
     
-    Forwards request to Routing Service which uses A* algorithm
-    with pollution weighting.
-    
-    Authentication: Optional
+    Forwards request to Routing Service (A* algorithm with pollution weighting).
+    Authentication: Not required
     """
     routing_service_url = os.getenv('ROUTING_SERVICE_URL', 'http://routing-service:8000')
     
     try:
-        # Convert to dict
         route_request = payload.model_dump()
-        
         logging.info(f"Route request: {route_request['start']} -> {route_request['goal']}")
         
         async with httpx.AsyncClient(timeout=60.0) as client:

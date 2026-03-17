@@ -12,9 +12,9 @@ Configuration and setup for CityAirQ pollution monitoring database.
 | sensor_type | SYMBOL    | 'fixed' or 'mobile'                   |
 | latitude    | DOUBLE    | GPS latitude (WGS84)                  |
 | longitude   | DOUBLE    | GPS longitude (WGS84)                 |
-| pm10        | DOUBLE    | PM10 concentration (µg/m³)          |
-| pm25        | DOUBLE    | PM2.5 concentration (µg/m³)         |
-| no2         | DOUBLE    | NO2 concentration (µg/m³)           |
+| pm10        | DOUBLE    | PM10 concentration (µg/m³)            |
+| pm25        | DOUBLE    | PM2.5 concentration (µg/m³)           |
+| no2         | DOUBLE    | NO2 concentration (µg/m³)             |
 | timestamp   | TIMESTAMP | Measurement time (partitioned by day) |
 
 ## Quick Start
@@ -23,7 +23,7 @@ Configuration and setup for CityAirQ pollution monitoring database.
 
 ```bash
 cd ~/city_air_quality/backend
-docker-compose up -d questdb
+docker compose up -d questdb
 
 # Verify it's running
 docker ps | grep questdb
@@ -73,38 +73,6 @@ See section below for Excel file format requirements.
 
 ---
 
-## Importing Data from Excel
-
-### Excel File Format
-
-**Required columns:**
-
-| sensor_id | sensor_type | latitude | longitude | pm10 | pm25 | no2 | timestamp           |
-| --------- | ----------- | -------- | --------- | ---- | ---- | --- | ------------------- |
-| F001      | fixed       | 44.5026  | 26.0821   | 35.2 | 20.1 | 28  | 2025-01-03 10:00:00 |
-| M042      | mobile      | 44.4680  | 26.0820   | 22.8 | 13.5 | 18  | 2025-01-03 10:05:00 |
-
-**Notes:**
-
-- `sensor_type` must be either 'fixed' or 'mobile'
-- `timestamp` format: YYYY-MM-DD HH:MM:SS
-- Coordinates in decimal degrees (WGS84)
-- Pollution values in µg/m³
-
-### Import Script Usage
-
-```bash
-# Import from Excel
-python3 import_from_excel.py /path/to/sensor_data.xlsx
-
-# Import with validation
-python3 import_from_excel.py sensor_data.xlsx --validate
-
-# Import to different table
-python3 import_from_excel.py sensor_data.xlsx --table test_readings
-```
-
----
 
 ## Verify Data
 
@@ -153,50 +121,6 @@ cur.execute("SELECT COUNT(*) FROM sensor_readings")
 count = cur.fetchone()[0]
 print(f"Total readings: {count}")
 ```
-
----
-
-## Data Strategy
-
-### FIXED Sensors (9 locations)
-
-**Purpose:** Sparse coverage at major intersections
-
-- Băneasa Metro, Victoriei Square, Romana Square
-- Unirii Square, Universitate, Obor Market
-- Tineretului, Berceni, Herăstrău Park
-
-**Coverage:** ~20% of city area
-**PM10 range:** 25-85 µg/m³
-
-### MOBILE Sensors (33 locations)
-
-**Purpose:** Dense coverage filling gaps between fixed sensors
-
-- West corridor (clean alternative route)
-- Center corridor (polluted shortcut)
-- Residential areas, secondary streets
-
-**Coverage:** ~80% of city area
-**PM10 range:** 22-84 µg/m³
-
-### Routing Demonstration Strategy
-
-```
-Scenario: Route from Băneasa (North) to Berceni (South)
-
-FIXED sensors only:
-├─ Sparse coverage misses center pollution
-├─ Chooses short route through center
-└─ Result: High PM10 exposure (~75-85 µg/m³)
-
-FIXED + MOBILE sensors:
-├─ Dense coverage detects center pollution
-├─ Chooses west detour (longer but cleaner)
-└─ Result: Low PM10 exposure (~25-36 µg/m³)
-```
-
-This demonstrates that **mobile sensor data significantly improves routing quality**.
 
 ---
 
@@ -258,12 +182,25 @@ postgresql://admin:quest@localhost:8812/qdb
 
 ---
 
+## Sensors
+### Fixed
+
+| Sensor ID | Location | Lat | Lon | Measures |
+|-----------|----------|-----|-----|----------|
+| F_RO0065A | Cercetari | 44.4419 | 26.0294 | NO2, CO |
+| F_RO0066A | Mihai Bravu | 44.4286 | 26.1302 | PM10, NO2, CO |
+| F_RO0067A | Drumul Taberei | 44.4244 | 26.0331 | PM10, NO2, CO |
+| F_RO0068A | Lacul Morii | 44.4489 | 26.0256 | PM10, NO2 |
+| F_RO0069A | Titan | 44.4106 | 26.1456 | PM10, NO2, CO |
+| F_RO0070A | Militari | 44.4350 | 26.0006 | PM10, NO2, CO |
+| F_RO0229A | Obor | 44.4500 | 26.1200 | PM10, PM2.5, NO2 |
+
 ## Troubleshooting
 
 ### QuestDB not responding
 
 ```bash
-docker-compose restart questdb
+docker compose restart questdb
 docker logs questdb
 ```
 
@@ -281,7 +218,7 @@ kill -9 <PID>
 docker exec questdb netstat -tulpn | grep 8812
 
 # Verify credentials in docker-compose.yml
-docker-compose config | grep -A 5 questdb
+docker compose config | grep -A 5 questdb
 ```
 
 ---

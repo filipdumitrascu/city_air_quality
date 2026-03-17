@@ -1,40 +1,51 @@
 import httpx
 import logging
-from fastapi import HTTPException
 import os
+from fastapi import HTTPException
 
-DATABASE_SERVER_URL = os.getenv("DATABASE_SERVICE_URL", "http://database-service:8000")
+DATABASE_SERVICE_URL = os.getenv("DATABASE_SERVICE_URL", "http://database-service:8000")
 
 logging.basicConfig(
-    level=logging.DEBUG, 
-    filename=os.path.join('logs', 'database_client.log'),
-    filemode='w', 
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
-) 
+)
 
-
-async def send_data_to_database(payload):
-    """Send sensor data to database for storage."""
+async def send_data_to_database(payload: dict) -> dict:
+    """
+    Send sensor data to database for storage.
+    
+    Args:
+        payload: Dict with sensor data matching pollution_data schema:
+            - sensor_id, sensor_type, timestamp, latitude, longitude
+            - Optional: altitude, humidity, pressure, temperature
+            - Optional: co, co2, no2, nh3, vocs
+            - Optional: pm1_0, pm2_5, pm10
+    
+    Returns:
+        {"success": True} on success
+        {"error": "..."} on failure
+    """
     try:
-        url = f"{DATABASE_SERVER_URL}/add_data/"
+        url = f"{DATABASE_SERVICE_URL}/add_data/"
+        
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json"}
-            )
+            response = await client.post(url, json=payload)
+        
         if response.status_code == 200:
-            logging.info("Data successfully sent to DatabaseServer")
+            logging.info(f"Data sent to database for sensor {payload.get('sensor_id')}")
             return {"success": True}
         else:
-            logging.error(f"Error from DatabaseServer: {response.text}")
-            return {"error": "Failed to add data to the database"}
+            logging.error(f"Database error: {response.text}")
+            return {"error": f"Database error: {response.text}"}
+            
+    except httpx.TimeoutException:
+        logging.error("Database service timeout")
+        return {"error": "Database service timeout"}
     except Exception as e:
-        logging.error(f"Error while sending data to DatabaseServer: {str(e)}")
-        return {"error": f"Error: {str(e)}"}
+        logging.error(f"Error sending to database: {str(e)}")
+        return {"error": str(e)}
 
-
-async def get_data_from_database(payload):
+async def get_data_from_database(payload: dict) -> str:
     """
     Fetch pollution data from database.
     
@@ -43,14 +54,14 @@ async def get_data_from_database(payload):
             - latitude: Center point latitude
             - longitude: Center point longitude
             - radius: Search radius in km
-            - layers: List of pollution metrics
-            - sensor_types: Optional list of sensor types ('fixed', 'mobile')
+            - layers: List of pollution metrics (optional)
+            - sensor_types: List of sensor types (optional)
     
     Returns:
         JSON string with sensor readings
     """
     try:
-        url = f"{DATABASE_SERVER_URL}/get_data/"
+        url = f"{DATABASE_SERVICE_URL}/get_data/"
         
         # Build query parameters
         params = {
@@ -69,17 +80,17 @@ async def get_data_from_database(payload):
         
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url, params=params)
-            response.raise_for_status() 
-       
-        logging.info("Data successfully received from DatabaseServer")
-        data = response.text
-        return data
+            response.raise_for_status()
         
-    except HTTPException as e:
-        raise e
+        logging.info("Data received from database")
+        return response.text
+        
     except httpx.HTTPStatusError as e:
-        logging.error(f"HTTP error while fetching data: {e.response.status_code} - {e.response.text}")
+        logging.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
         raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
+    except httpx.TimeoutException:
+        logging.error("Database service timeout")
+        raise HTTPException(status_code=504, detail="Database service timeout")
     except Exception as e:
-        logging.error(f"Unexpected error while sending data to DatabaseServer: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logging.error(f"Error fetching from database: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

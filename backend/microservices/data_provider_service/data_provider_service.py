@@ -1,18 +1,20 @@
-from fastapi import HTTPException
-from fastapi import FastAPI
+from fastapi import HTTPException, FastAPI
 from contextlib import asynccontextmanager
-import asyncio
 from prometheus_fastapi_instrumentator import Instrumentator
+import asyncio
 import logging
 import os
 import json
 import redis
 import hashlib
 
+from database_service.client.database_service_client import get_data_from_database
+from common.message_queue_googlepubsub.pubsub_client import PubSubClientSubscriber, PubSubClientPublisher
 
-# Connect to Redis for caching query results
+
+# Redis connection for caching
 redis_client = redis.Redis(
-    host=os.getenv('REDIS_HOST', 'redis'),
+    host=os.getenv('REDIS_HOST', 'redis-service'),
     port=int(os.getenv('REDIS_PORT', 6379)),
     db=int(os.getenv('REDIS_DB', 0)),
     decode_responses=True,
@@ -20,51 +22,36 @@ redis_client = redis.Redis(
     socket_timeout=5
 )
 
-
-# Configure file-based logging for Data Provider Service
+# Logging to stdout only (visible via kubectl logs)
 logging.basicConfig(
     level=logging.INFO,
-    filename=os.path.join('logs', 'data_provider_service.log'),
-    filemode='w',
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-
-# Test Redis connection at startup
-try:
-    redis_client.ping()
-    logging.info(f"Redis connected at {os.getenv('REDIS_HOST', 'redis')}:6379")
-except Exception as e:
-    logging.warning(f"Redis unavailable (caching disabled): {e}")
-
-
-# Import dependencies
-from database_service.client.database_service_client import get_data_from_database
-from common.message_queue_googlepubsub.pubsub_client import PubSubClientSubscriber, PubSubClientPublisher
+# Available pollution layers matching pollution_data schema
+AVAILABLE_LAYERS = [
+    "pm10", "pm2_5", "pm1_0",  # Particulate matter
+    "no2", "co", "co2", "nh3", "vocs",  # Gases
+    "temperature", "humidity", "pressure", "altitude"  # Weather
+]
 
 
+# Helper functions
 def generate_cache_key(query_params: dict) -> str:
-    """
-    Generate unique cache key from query parameters.
-    
-    Args:
-        query_params: Query dict with latitude, longitude, radius, layers, sensor_types
-    
-    Returns:
-        Cache key string (e.g., 'provider_query:abc123')
-    """
-    # Sort parameters for consistent keys - NOW INCLUDES sensor_types
+    """ Generate unique cache key from query parameters. """
     sensor_types = query_params.get('sensor_types', ['fixed', 'mobile'])
     if sensor_types:
         sensor_types = sorted(sensor_types)
     else:
         sensor_types = ['fixed', 'mobile']
     
+    layers = query_params.get('layers') or []
+    
     key_data = json.dumps({
         'latitude': round(query_params.get('latitude', 0), 4),
         'longitude': round(query_params.get('longitude', 0), 4),
         'radius': query_params.get('radius', 0),
-        'layers': sorted(query_params.get('layers', [])),
+        'layers': sorted(layers) if layers else 'all',
         'sensor_types': sensor_types
     }, sort_keys=True)
     
@@ -72,53 +59,40 @@ def generate_cache_key(query_params: dict) -> str:
     return f"provider_query:{hash_hex}"
 
 
-# Subscribe to query requests from Client Message Handler
-subscription_name = "results_service_messages-sub"
-
-
+# PUBSUB MESSAGE HANDLER
 async def process_message(message):
     """
     Process incoming query requests from PubSub with Redis caching.
     
     Cache strategy:
-    1. Generate cache key from query parameters
-    2. Check Redis for cached result
-    3. If HIT: publish cached response (~5ms)
-    4. If MISS: query Database Service, cache result, publish (~150ms)
-    
-    Flow:
-    1. Client Message Handler publishes query to 'results_service_messages'
-    2. This subscriber receives the message
-    3. Check Redis cache
-    4. If miss: Query Database Service for pollution data
-    5. Cache result in Redis
-    6. Publish response to 'results_response_messages'
-    7. Client Message Handler picks up response and returns to client
+    - Cache HIT: return cached result (~5ms)
+    - Cache MISS: query Database Service, cache result, return (~150ms)
+    - Cache TTL: 4 minutes
     
     Args:
         message: PubSub message containing query parameters
-                 (latitude, longitude, radius, layers)
-    
-    Cache TTL: 4 minutes
+                 (latitude, longitude, radius, layers, sensor_types)
     """
     try:
         # Decode query parameters from message
         decoded_message = json.loads(message.data.decode("utf-8"))
-        logging.info(f"Received message: {decoded_message}")
+        logging.info(f"Received query: lat={decoded_message.get('latitude')}, "
+                     f"lon={decoded_message.get('longitude')}, "
+                     f"radius={decoded_message.get('radius')}")
         
         # Acknowledge message to PubSub
         message.ack()
 
-        # Handle layer selection
-        # If no specific layers requested, query all available pollution metrics
-        available_layers = ["Temperature", "Humidity", "Pressure", "Altitude", "CO2", "PM1_0", "PM2_5", "PM10"]
-        selected_layers = decoded_message.get("layers") or available_layers
+        # Handle layer selection - default to all if not specified
+        selected_layers = decoded_message.get("layers")
+        if not selected_layers:
+            selected_layers = AVAILABLE_LAYERS
         decoded_message["layers"] = selected_layers
         
-        # Handle sensor_types - default to both if not specified
+        # Handle sensor_types - default to mobile if not specified
         sensor_types = decoded_message.get("sensor_types")
         if not sensor_types:
-            sensor_types = ["fixed", "mobile"]
+            sensor_types = ["mobile"]
         decoded_message["sensor_types"] = sensor_types
 
         # Redis cache check
@@ -128,36 +102,31 @@ async def process_message(message):
             cached_result = redis_client.get(cache_key)
             if cached_result:
                 logging.info(f"Cache HIT: {cache_key}")
+
                 # Publish cached result directly
                 PubSubClientPublisher.publish_message("results_response_messages", cached_result)
                 return
-            else:
-                logging.info(f"Cache MISS: {cache_key}")
+            logging.info(f"Cache MISS: {cache_key}")
         except Exception as e:
             logging.warning(f"Redis error (continuing without cache): {e}")
 
         # Query database (Cache miss)
         try:
-            # Query Database Service for pollution data
-            # Returns list of sensor readings matching location/radius criteria
             response = await get_data_from_database(decoded_message)
             
             # Cache result
             try:
-                redis_client.setex(
-                    cache_key,
-                    240,  # TTL in seconds
-                    response
-                )
+                redis_client.setex(cache_key, 240, response)
                 logging.info(f"Cached result: {cache_key} (TTL: 240s)")
             except Exception as e:
                 logging.warning(f"Failed to cache result: {e}")
             
-            # Publish successful response back to Client Message Handler
+            # Publish response back to Client Message Handler
             PubSubClientPublisher.publish_message("results_response_messages", response)
+            logging.info("Response published to results_response_messages")
             
         except HTTPException as e:
-            logging.error(f"Error receiving response from database: {e.detail}")
+            logging.error(f"Database error: {e.detail}")
             PubSubClientPublisher.publish_message("results_response_messages", {
                 "error": e.detail, 
                 "status_code": e.status_code
@@ -168,33 +137,67 @@ async def process_message(message):
         message.nack()
 
 
-# Create subscriber
-results_subscriber = PubSubClientSubscriber(subscription_name, process_message)
+# PubSub subscriber
+results_subscriber = PubSubClientSubscriber("results_service_messages-sub", process_message)
 
 
 # Fast API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application lifespan - start subscriber on startup."""
     asyncio.create_task(results_subscriber.start_subscriber())
-    logging.info("Subscriber started and listening for messages on 'results_service_messages-sub'.")
+    logging.info("PubSub subscriber started for 'results_service_messages-sub'")
+    
+    try:
+        redis_client.ping()
+        logging.info(f"Redis connected at {os.getenv('REDIS_HOST', 'redis-service')}:6379")
+    except Exception as e:
+        logging.warning(f"Redis unavailable (caching disabled): {e}")
+    
     yield
-    logging.info("Shutting down Data Provider Service...")
+    
+    results_subscriber.stop()
+    logging.info("Data Provider Service shutting down")
 
 
 app = FastAPI(
-    title="Data Provider Service API",
-    description="Receives requests and returns data",
-    lifespan=lifespan,
-    version="1.0.0"
+    title="Data Provider Service",
+    description="Query handler for pollution data with Redis caching",
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # Prometheus metrics for monitoring
 Instrumentator().instrument(app).expose(app)
 
-# Cache management endpoints
+
+# ENDPOINTS
+@app.get("/")
+async def root():
+    return {
+        "service": "data_provider_service",
+        "version": "2.0.0",
+        "status": "running"
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check for Kubernetes probes."""
+    redis_ok = False
+    try:
+        redis_ok = redis_client.ping()
+    except:
+        pass
+    
+    return {
+        "status": "healthy",
+        "service": "data_provider_service",
+        "redis": "connected" if redis_ok else "disconnected"
+    }
+
 @app.get("/cache/stats")
 async def cache_stats():
-    """Get Redis cache statistics for Data Provider Service"""
+    """Get Redis cache statistics."""
     try:
         info = redis_client.info("stats")
         provider_keys = len(redis_client.keys("provider_query:*"))
@@ -205,23 +208,23 @@ async def cache_stats():
             "hits": info.get("keyspace_hits", 0),
             "misses": info.get("keyspace_misses", 0),
             "hit_rate_percent": round(
-                (info.get("keyspace_hits", 0) / max(info.get("total_commands_processed", 1), 1)) * 100, 
+                info.get("keyspace_hits", 0) / max(info.get("total_commands_processed", 1), 1) * 100,
                 2
             ),
-            "cached_provider_queries": provider_keys
+            "cached_queries": provider_keys
         }
     except Exception as e:
         return {"connected": False, "error": str(e)}
 
 @app.delete("/cache/clear")
 async def clear_cache():
-    """Clear cached queries for Data Provider Service"""
+    """Clear all cached queries."""
     try:
         keys = redis_client.keys("provider_query:*")
         if keys:
             redis_client.delete(*keys)
-            logging.info(f"Cleared {len(keys)} cached provider queries")
+            logging.info(f"Cleared {len(keys)} cached queries")
             return {"cleared": len(keys)}
-        return {"cleared": 0, "message": "No cached queries to clear"}
+        return {"cleared": 0, "message": "No cached queries"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Cache clear error: {str(e)}")

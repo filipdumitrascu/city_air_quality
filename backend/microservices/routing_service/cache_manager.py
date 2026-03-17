@@ -3,7 +3,7 @@ import json
 import hashlib
 import logging
 from typing import Optional
-from .config import get_config
+from config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +12,9 @@ class CacheManager:
     
     def __init__(self):
         self.config = get_config()
+        self.connected = False
+        self.redis_client = None
+        
         try:
             self.redis_client = redis.Redis(
                 host=self.config["redis_host"],
@@ -21,44 +24,28 @@ class CacheManager:
                 socket_connect_timeout=5,
                 socket_timeout=5
             )
-            # Test connection
             self.redis_client.ping()
             self.connected = True
             logger.info(f"Redis connected at {self.config['redis_host']}:{self.config['redis_port']}")
         except Exception as e:
-            logger.warning(f"Redis connection failed: {e}. Caching disabled.")
-            self.connected = False
+            logger.warning(f"Redis unavailable: {e}")
     
-    def generate_cache_key(self, start, goal, alpha, sensor_types, heuristic: str = "haversine") -> str:
-        """
-        Generate unique cache key from request parameters
+    def generate_cache_key(self, start, goal, alpha: float, 
+                           sensor_types: list, mode_heuristic: str) -> str:
+        """Generate unique cache key"""
+        key_data = json.dumps({
+            "start": [round(start.lat, 4), round(start.lon, 4)],
+            "goal": [round(goal.lat, 4), round(goal.lon, 4)],
+            "alpha": round(alpha, 2),
+            "sensors": sorted(sensor_types),
+            "mode": mode_heuristic
+        }, sort_keys=True)
         
-        Args:
-            start: Start coordinate
-            goal: Goal coordinate
-            alpha: Pollution weight
-            sensor_types: List of sensor types
-            heuristic: Heuristic function name
-        
-        Returns:
-            Cache key string (e.g., 'route:abc123')
-        """
-        # Round coordinates to 4 decimals for consistent caching
-        # Include heuristic in cache key
-        key_data = f"{start.lat:.4f},{start.lon:.4f}|{goal.lat:.4f},{goal.lon:.4f}|{alpha:.2f}|{sorted(sensor_types)}|{heuristic}"
         hash_hex = hashlib.md5(key_data.encode()).hexdigest()
         return f"route:{hash_hex}"
     
     def get_cached_route(self, cache_key: str) -> Optional[dict]:
-        """
-        Get cached route if exists
-        
-        Args:
-            cache_key: Cache key
-        
-        Returns:
-            Cached route data or None
-        """
+        """Get cached route if exists"""
         if not self.connected:
             return None
         
@@ -67,40 +54,27 @@ class CacheManager:
             if cached:
                 logger.info(f"Cache HIT: {cache_key}")
                 return json.loads(cached)
-            logger.debug(f"Cache MISS: {cache_key}")
             return None
         except Exception as e:
             logger.error(f"Cache get error: {e}")
             return None
     
-    def cache_route(self, cache_key: str, route_data: dict, ttl: Optional[int] = None):
-        """
-        Cache route response
-        
-        Args:
-            cache_key: Cache key
-            route_data: Route data to cache
-            ttl: Time to live in seconds (default from config)
-        """
+    def cache_route(self, cache_key: str, route_data: dict, ttl: int = None):
+        """Cache route response"""
         if not self.connected:
             return
         
         try:
             ttl = ttl or self.config["cache_ttl"]
-            self.redis_client.setex(
-                cache_key,
-                ttl,
-                json.dumps(route_data)
-            )
-            logger.info(f"Cached route: {cache_key} (TTL={ttl}s)")
+            self.redis_client.setex(cache_key, ttl, json.dumps(route_data))
+            logger.info(f"Cached: {cache_key} (TTL={ttl}s)")
         except Exception as e:
             logger.error(f"Cache set error: {e}")
     
     def is_connected(self) -> bool:
-        """Check if Redis is connected"""
-        if not self.connected:
+        """Check Redis connection"""
+        if not self.connected or not self.redis_client:
             return False
-        
         try:
             self.redis_client.ping()
             return True

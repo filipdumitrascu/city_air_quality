@@ -1,10 +1,12 @@
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional, Dict, Any
+from typing import List, Literal, Optional
+
 
 class Coordinate(BaseModel):
     """Geographic coordinate"""
-    lat: float = Field(..., description="Latitude")
-    lon: float = Field(..., description="Longitude")
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+
 
 class RouteRequest(BaseModel):
     """Request for route calculation"""
@@ -14,64 +16,63 @@ class RouteRequest(BaseModel):
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Weight for pollution vs distance (0=fastest, 1=cleanest)"
+        description="Pollution weight: 0=fastest, 1=cleanest"
     )
     sensor_types: List[Literal["fixed", "mobile"]] = Field(
         default=["fixed", "mobile"],
-        description="Which sensor types to use: ['fixed'], ['mobile'], or ['fixed', 'mobile']"
+        description="Sensor types to use for pollution data"
     )
     heuristic: Literal["haversine", "euclidean", "manhattan", "diagonal", "octile"] = Field(
         default="haversine",
-        description="Heuristic function for A* pathfinding"
+        description="A* heuristic (foot mode only)"
     )
-    transport_mode: Literal["foot", "car"] = Field(
+    transport_mode: Literal["foot", "bicycle"] = Field(
         default="foot",
-        description="Transport mode: 'foot' uses A* on grid, 'car' uses Google Routes API"
+        description="'foot' = A* on pollution grid, 'bicycle' = Google Routes API"
     )
 
+
 class RouteNode(BaseModel):
-    """Single node in the route with all pollution values"""
+    """Single waypoint with pollution values"""
     lat: float
     lon: float
     pm10: Optional[float] = None
-    pm25: Optional[float] = None
-    no2: Optional[float] = None
-    aqi: Optional[float] = None  # Combined Air Quality Index
+    pm2_5: Optional[float] = None
+    aqi: Optional[float] = None
+
 
 class GeoJSONGeometry(BaseModel):
-    """GeoJSON LineString geometry"""
+    """GeoJSON LineString"""
     type: str = "LineString"
     coordinates: List[List[float]]  # [[lon, lat], ...]
 
+
 class GeoJSONProperties(BaseModel):
-    """GeoJSON properties with all pollution metrics"""
+    """Route properties with pollution stats"""
     distance_km: float
-
+    duration_minutes: Optional[float] = None
+    
     # PM10
-    avg_pollution_pm10: float
-    max_pollution_pm10: float
-
+    avg_pm10: float
+    max_pm10: float
+    
     # PM2.5
-    avg_pollution_pm25: float
-    max_pollution_pm25: float
-
-    # NO2
-    avg_pollution_no2: float
-    max_pollution_no2: float
-
+    avg_pm2_5: float
+    max_pm2_5: float
+    
     # Combined AQI
     avg_aqi: float
     max_aqi: float
-
+    
     # Metadata
     calculation_time_ms: float
     sensor_types_used: List[str]
-
     heuristic_used: Optional[str] = None
     transport_mode: str
     nodes_evaluated: Optional[int] = None
     google_routes_considered: Optional[int] = None
-    cached: bool
+    cached: bool = False
+
 
 class GeoJSONFeature(BaseModel):
     """GeoJSON Feature"""
@@ -79,10 +80,12 @@ class GeoJSONFeature(BaseModel):
     geometry: GeoJSONGeometry
     properties: GeoJSONProperties
 
+
 class RouteResponse(BaseModel):
-    """Response with calculated route in GeoJSON format"""
+    """Route response with GeoJSON and waypoints"""
     route: GeoJSONFeature
     waypoints: List[RouteNode]
+
 
 class HealthResponse(BaseModel):
     """Health check response"""

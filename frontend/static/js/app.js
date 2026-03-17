@@ -36,12 +36,15 @@ const endIcon = L.divIcon({
     iconAnchor: [14, 14]
 });
 
-// Calculate combined Air Quality Index
-function calculateAQI(pm10, pm25, no2) {
-    const pm10Index = pm10 || 0;
-    const pm25Index = (pm25 || 0) * 1.5;
-    const no2Index = (no2 || 0) * 0.8;
-    return (pm10Index + pm25Index + no2Index) / 3.3;
+// Calculate combined Air Quality Index (PM10 + PM2.5 only)
+function calculateAQI(pm10, pm2_5) {
+    const pm10Val = (pm10 && pm10 >= 0) ? pm10 : 0;
+    const pm25Val = (pm2_5 && pm2_5 >= 0) ? pm2_5 * 1.5 : 0;
+    
+    if (pm10Val === 0 && pm25Val === 0) return 50; // Default
+    
+    const count = (pm10Val > 0 ? 1 : 0) + (pm25Val > 0 ? 1 : 0);
+    return (pm10Val + pm25Val) / count;
 }
 
 // Get pollution color based on AQI
@@ -55,7 +58,7 @@ function getPollutionColor(aqi) {
 // Get selected transport mode
 function getTransportMode() {
     const selected = document.querySelector('input[name="transport-mode"]:checked');
-    return selected ? selected.value : 'car';
+    return selected ? selected.value : 'bicycle';
 }
 
 // Set start point from map click
@@ -197,7 +200,8 @@ async function calculateRoute() {
     const originalStart = { lat: startLat, lon: startLon };
     const originalEnd = { lat: endLat, lon: endLon };
     
-    const modeText = transportMode === 'car' ? 'Calculating cycling route...' : 'Calculating walking route...';    document.getElementById('loading-text').textContent = modeText;
+    const modeText = transportMode === 'bicycle' ? 'Calculating cycling route...' : 'Calculating walking route...';
+    document.getElementById('loading-text').textContent = modeText;
     document.getElementById('loading').style.display = 'flex';
     
     try {
@@ -220,8 +224,8 @@ async function calculateRoute() {
             const errorMsg = data.detail || 'Route calculation failed';
             if (errorMsg.includes('No pollution data') || errorMsg.includes('No path found')) {
                 showMessage('Not enough pollution data in the selected area to calculate a route.', 'error');
-            } else if (errorMsg.includes('Google Routes API not configured')) {
-                showMessage('Car routing is not available. Please try "By Foot" mode.', 'error');
+            } else if (errorMsg.includes('Google Routes') || errorMsg.includes('not configured')) {
+                showMessage('Bicycle routing is not available. Please try "By Foot" mode.', 'error');
             } else {
                 showMessage(`Error: ${errorMsg}`, 'error');
             }
@@ -250,25 +254,24 @@ function displayRoute(data, originalStart, originalEnd) {
     const route = data.route;
     const waypoints = data.waypoints;
     const props = route.properties;
-    const isCarMode = props.transport_mode === 'car';
+    const isBicycleMode = props.transport_mode === 'bicycle';
     
     const firstWaypoint = waypoints[0];
     const lastWaypoint = waypoints[waypoints.length - 1];
     
     // Get colors for first and last waypoints
-    const firstAqi = firstWaypoint.aqi || calculateAQI(firstWaypoint.pm10, firstWaypoint.pm25, firstWaypoint.no2);
+    const firstAqi = firstWaypoint.aqi || calculateAQI(firstWaypoint.pm10, firstWaypoint.pm2_5);
     const firstColor = getPollutionColor(firstAqi);
     
-    const lastAqi = lastWaypoint.aqi || calculateAQI(lastWaypoint.pm10, lastWaypoint.pm25, lastWaypoint.no2);
+    const lastAqi = lastWaypoint.aqi || calculateAQI(lastWaypoint.pm10, lastWaypoint.pm2_5);
     const lastColor = getPollutionColor(lastAqi);
     
-    // For car mode, draw the full route from Google (real roads)
-    if (isCarMode && route.geometry && route.geometry.coordinates) {
+    // For bicycle mode, draw the full route from Google (real roads)
+    if (isBicycleMode && route.geometry && route.geometry.coordinates) {
         // Convert GeoJSON coordinates [lon, lat] to Leaflet [lat, lon]
         const routeCoords = route.geometry.coordinates.map(c => [c[1], c[0]]);
         
         // Draw route with gradient based on AQI
-        // For simplicity, use average AQI color for the whole route
         const avgAqi = props.avg_aqi || 50;
         const routeColor = getPollutionColor(avgAqi);
         
@@ -282,7 +285,7 @@ function displayRoute(data, originalStart, originalEnd) {
         waypoints.forEach((wp, index) => {
             if (index === 0 || index === waypoints.length - 1) return;
             
-            const aqi = wp.aqi || calculateAQI(wp.pm10, wp.pm25, wp.no2);
+            const aqi = wp.aqi || calculateAQI(wp.pm10, wp.pm2_5);
             const color = getPollutionColor(aqi);
             
             L.circleMarker([wp.lat, wp.lon], {
@@ -295,9 +298,8 @@ function displayRoute(data, originalStart, originalEnd) {
             .bindPopup(`
                 <strong>Sample Point ${index}</strong><br>
                 <hr style="margin: 5px 0;">
-                PM10: ${(wp.pm10 || 0).toFixed(1)} ug/m3<br>
-                PM2.5: ${(wp.pm25 || 0).toFixed(1)} ug/m3<br>
-                NO2: ${(wp.no2 || 0).toFixed(1)} ug/m3<br>
+                PM10: ${formatValue(wp.pm10)} ug/m3<br>
+                PM2.5: ${formatValue(wp.pm2_5)} ug/m3<br>
                 <strong>AQI: ${(wp.aqi || aqi).toFixed(0)}</strong>
             `)
             .addTo(routeLayer);
@@ -328,7 +330,7 @@ function displayRoute(data, originalStart, originalEnd) {
             for (let i = 0; i < waypoints.length - 1; i++) {
                 const start = waypoints[i];
                 const end = waypoints[i + 1];
-                const aqi = start.aqi || calculateAQI(start.pm10, start.pm25, start.no2);
+                const aqi = start.aqi || calculateAQI(start.pm10, start.pm2_5);
                 const color = getPollutionColor(aqi);
                 
                 L.polyline([[start.lat, start.lon], [end.lat, end.lon]], {
@@ -343,7 +345,7 @@ function displayRoute(data, originalStart, originalEnd) {
         waypoints.forEach((wp, index) => {
             if (index === 0 || index === waypoints.length - 1) return;
             
-            const aqi = wp.aqi || calculateAQI(wp.pm10, wp.pm25, wp.no2);
+            const aqi = wp.aqi || calculateAQI(wp.pm10, wp.pm2_5);
             const color = getPollutionColor(aqi);
             
             L.circleMarker([wp.lat, wp.lon], {
@@ -356,9 +358,8 @@ function displayRoute(data, originalStart, originalEnd) {
             .bindPopup(`
                 <strong>Waypoint ${index}</strong><br>
                 <hr style="margin: 5px 0;">
-                PM10: ${(wp.pm10 || 0).toFixed(1)} ug/m3<br>
-                PM2.5: ${(wp.pm25 || 0).toFixed(1)} ug/m3<br>
-                NO2: ${(wp.no2 || 0).toFixed(1)} ug/m3<br>
+                PM10: ${formatValue(wp.pm10)} ug/m3<br>
+                PM2.5: ${formatValue(wp.pm2_5)} ug/m3<br>
                 <strong>AQI: ${(wp.aqi || aqi).toFixed(0)}</strong>
             `)
             .addTo(routeLayer);
@@ -379,6 +380,12 @@ function displayRoute(data, originalStart, originalEnd) {
     displayRouteResults(props);
 }
 
+// Format pollution value (handle null/-1)
+function formatValue(val) {
+    if (val === null || val === undefined || val < 0) return 'N/A';
+    return val.toFixed(1);
+}
+
 // Display route results
 function displayRouteResults(props) {
     const resultsSection = document.getElementById('results-section');
@@ -386,9 +393,9 @@ function displayRouteResults(props) {
     
     resultsSection.style.display = 'block';
     
-    const isCarMode = props.transport_mode === 'car';
-    const modeClass = isCarMode ? 'bicycle-mode' : 'foot-mode';
-    const modeLabel = isCarMode ? 'BICYCLE' : 'FOOT';    
+    const isBicycleMode = props.transport_mode === 'bicycle';
+    const modeClass = isBicycleMode ? 'bicycle-mode' : 'foot-mode';
+    const modeLabel = isBicycleMode ? 'BICYCLE' : 'FOOT';    
     
     let resultsHtml = `
         <div class="result-item">
@@ -401,8 +408,8 @@ function displayRouteResults(props) {
         </div>
     `;
     
-    // Show duration only for car mode
-    if (isCarMode && props.duration_minutes) {
+    // Show duration only for bicycle mode
+    if (isBicycleMode && props.duration_minutes) {
         resultsHtml += `
         <div class="result-item">
             <span class="result-label">Duration</span>
@@ -418,15 +425,11 @@ function displayRouteResults(props) {
         </div>
         <div class="result-item">
             <span class="result-label">Avg PM10</span>
-            <span class="result-value">${props.avg_pollution_pm10.toFixed(1)} ug/m3</span>
+            <span class="result-value">${(props.avg_pm10 || 0).toFixed(1)} ug/m3</span>
         </div>
         <div class="result-item">
             <span class="result-label">Avg PM2.5</span>
-            <span class="result-value">${(props.avg_pollution_pm25 || 0).toFixed(1)} ug/m3</span>
-        </div>
-        <div class="result-item">
-            <span class="result-label">Avg NO2</span>
-            <span class="result-value">${(props.avg_pollution_no2 || 0).toFixed(1)} ug/m3</span>
+            <span class="result-value">${(props.avg_pm2_5 || 0).toFixed(1)} ug/m3</span>
         </div>
         <div class="result-item">
             <span class="result-label">Calculation Time</span>
@@ -434,8 +437,8 @@ function displayRouteResults(props) {
         </div>
     `;
     
-    // Show nodes evaluated for foot mode, routes considered for car mode
-    if (isCarMode && props.google_routes_considered) {
+    // Show nodes evaluated for foot mode, routes considered for bicycle mode
+    if (isBicycleMode && props.google_routes_considered) {
         resultsHtml += `
         <div class="result-item">
             <span class="result-label">Routes Compared</span>
@@ -490,7 +493,7 @@ async function queryPollutionData() {
                 latitude: lat,
                 longitude: lon,
                 radius: radius,
-                layers: ['pm10', 'pm25', 'no2'],
+                layers: ['pm10', 'pm2_5'],
                 sensor_types: sensorTypes
             })
         });
@@ -538,19 +541,30 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
     let mobileCount = 0;
     
     readings.forEach(reading => {
-        const sensorId = reading[0];
-        const timestamp = reading[1];
-        const lat = reading[2];
-        const lon = reading[3];
-        const pm10 = reading[4];
-        const pm25 = reading[5];
-        const no2 = reading[6];
+        // Handle both dict and array formats
+        let sensorId, timestamp, lat, lon, pm10, pm2_5;
         
-        const sensorType = sensorId.startsWith('M') ? 'Mobile' : 'Fixed';
+        if (Array.isArray(reading)) {
+            sensorId = reading[0];
+            timestamp = reading[1];
+            lat = reading[2];
+            lon = reading[3];
+            pm10 = reading[4];
+            pm2_5 = reading[5];
+        } else {
+            sensorId = reading.sensor_id;
+            timestamp = reading.timestamp;
+            lat = reading.latitude;
+            lon = reading.longitude;
+            pm10 = reading.pm10;
+            pm2_5 = reading.pm2_5;
+        }
+        
+        const sensorType = sensorId.startsWith('F') ? 'Fixed' : 'Mobile';
         if (sensorType === 'Mobile') mobileCount++;
         else fixedCount++;
         
-        const aqi = calculateAQI(pm10, pm25, no2);
+        const aqi = calculateAQI(pm10, pm2_5);
         const color = getPollutionColor(aqi);
         
         const markerOptions = {
@@ -566,16 +580,16 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
             <strong>${sensorId}</strong> <em>(${sensorType})</em><br>
             <small>${timestamp}</small><br>
             <hr style="margin: 5px 0;">
-            PM10: ${pm10.toFixed(1)} ug/m3<br>
-            PM2.5: ${pm25.toFixed(1)} ug/m3<br>
-            NO2: ${no2.toFixed(1)} ug/m3<br>
+            PM10: ${formatValue(pm10)} ug/m3<br>
+            PM2.5: ${formatValue(pm2_5)} ug/m3<br>
             <strong>AQI: ${aqi.toFixed(0)}</strong>
         `)
         .addTo(pollutionLayer);
     });
     
     if (readings.length > 0) {
-        const bounds = L.latLngBounds(readings.map(r => [r[2], r[3]]));
+        const getCoords = r => Array.isArray(r) ? [r[2], r[3]] : [r.latitude, r.longitude];
+        const bounds = L.latLngBounds(readings.map(getCoords));
         map.fitBounds(bounds, { padding: [50, 50] });
     }
     
