@@ -95,6 +95,11 @@ def fetch_data(params):
     """
     Fetch pollution data within geographic bounds.
     
+    Returns only the LATEST reading per unique location (rounded to 4 decimals).
+    This means:
+    - Fixed sensors: 1 reading per station (latest)
+    - Mobile sensors: 1 reading per unique GPS position (latest)
+    
     Args:
         params: Tuple containing:
             [0] layers: List of column names to retrieve
@@ -105,7 +110,7 @@ def fetch_data(params):
             [5] sensor_types: List of sensor types to filter
     
     Returns:
-        List of dicts with sensor readings
+        List of dicts with sensor readings (deduplicated by location)
     """
     conn = None
     try:
@@ -140,44 +145,57 @@ def fetch_data(params):
         else:
             sensor_filter = ""
         
-        # Query with geographic bounds and latest readings per location
+        # Calculate bounds
+        lat_min = latitude - delta_lat
+        lat_max = latitude + delta_lat
+        lon_min = longitude - delta_lng
+        lon_max = longitude + delta_lng
+        
+        # Query: Get all data in bounds, then deduplicate per location in Python
+        # QuestDB doesn't support ROW_NUMBER() OVER, so we fetch and dedupe
         query = f"""
             SELECT {columns_str}
-            FROM (
-                SELECT *,
-                       ROUND(latitude, 4) AS lat4,
-                       ROUND(longitude, 4) AS lng4
-                FROM pollution_data
-                WHERE 1=1 {sensor_filter}
-            )
-            WHERE ABS(lat4 - ROUND(CAST(%s AS DOUBLE), 4)) <= ROUND(CAST(%s AS DOUBLE), 4)
-              AND ABS(lng4 - ROUND(CAST(%s AS DOUBLE), 4)) <= ROUND(CAST(%s AS DOUBLE), 4)
+            FROM pollution_data
+            WHERE latitude >= %s AND latitude <= %s
+              AND longitude >= %s AND longitude <= %s
+              {sensor_filter}
             ORDER BY timestamp DESC
-            LIMIT 1000
+            LIMIT 10000
         """
         
-        cursor.execute(query, (latitude, delta_lat, longitude, delta_lng))
+        cursor.execute(query, (lat_min, lat_max, lon_min, lon_max))
         rows = cursor.fetchall()
         
         if not rows:
             logging.info("No data found for query")
             raise HTTPException(status_code=404, detail="No data found")
         
-        # Convert to list of dicts
-        results = []
+        # Deduplicate: keep only latest reading per location (4 decimal precision)
+        # 4 decimals = ~11 meters precision
+        location_map = {}
+        
         for row in rows:
             result = {}
             for i, col in enumerate(all_columns):
                 value = row[i]
-                # Convert timestamp to string
                 if col == 'timestamp' and value:
                     result[col] = str(value)
                 else:
                     result[col] = value
-            results.append(result)
+            
+            # Create location key (rounded to 4 decimals)
+            lat_key = round(result['latitude'], 4)
+            lon_key = round(result['longitude'], 4)
+            location_key = (lat_key, lon_key)
+            
+            # Keep only the first (most recent due to ORDER BY DESC)
+            if location_key not in location_map:
+                location_map[location_key] = result
+        
+        results = list(location_map.values())
         
         cursor.close()
-        logging.info(f"Fetched {len(results)} rows")
+        logging.info(f"Fetched {len(rows)} rows, deduplicated to {len(results)} unique locations")
         return results
         
     except HTTPException:
