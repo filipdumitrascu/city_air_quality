@@ -29,12 +29,21 @@ else
 fi
 echo ""
 
-# TEST 2: Ingest Data (requires real OAuth token - expected to fail in CI)
+# TEST 2: Ingest Data
 echo "Test 2: Ingest Data"
 TIMESTAMP_MS=$(($(date +%s) * 1000))
 INGEST_PAYLOAD="{\"sensor_id\":\"IntTest_001\",\"sensor_type\":\"mobile\",\"timestamp\":$TIMESTAMP_MS,\"latitude\":44.4268,\"longitude\":26.1025,\"pm10\":45.3,\"pm2_5\":25.2}"
-AUTH_TOKEN="${INGEST_AUTH_TOKEN:-}"
-
+ 
+# Try to load API key from file, fallback to env var
+API_KEY_FILE="$(dirname "$0")/../../../deploy/sensor-api-key.txt"
+if [ -f "$API_KEY_FILE" ]; then
+    AUTH_TOKEN=$(cat "$API_KEY_FILE" | tr -d '\n')
+elif [ -n "$INGEST_AUTH_TOKEN" ]; then
+    AUTH_TOKEN="$INGEST_AUTH_TOKEN"
+else
+    AUTH_TOKEN=""
+fi
+ 
 if [ -n "$AUTH_TOKEN" ]; then
     INGEST_RESPONSE=$(curl -s -X POST "$BASE_URL/ingest/" \
       -H "Content-Type: application/json" \
@@ -47,7 +56,7 @@ if [ -n "$AUTH_TOKEN" ]; then
         echo "FAILED"; FAILED=$((FAILED+1))
     fi
 else
-    echo "SKIPPED (no INGEST_AUTH_TOKEN set)"
+    echo "SKIPPED (no sensor-api-key.txt or INGEST_AUTH_TOKEN)"
 fi
 sleep 1
 echo ""

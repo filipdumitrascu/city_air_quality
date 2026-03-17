@@ -1,16 +1,17 @@
+import os
 import requests
-from fastapi import HTTPException, Header, Depends
+from fastapi import HTTPException, Header
 from typing import Optional
 
 GOOGLE_TOKEN_INFO_URL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 
+SENSOR_API_KEYS = set(
+    key.strip() for key in os.getenv("SENSOR_API_KEYS", "").split(",") if key.strip()
+)
 
-def verify_token(token: str) -> dict:
+def verify_google_token(token: str) -> dict:
     """
     Validate a Google OAuth 2.0 Access Token.
-    
-    Args:
-        token: The access token string (without 'Bearer ' prefix)
     
     Returns:
         dict: User info containing email, sub (user ID), etc.
@@ -40,26 +41,21 @@ def verify_token(token: str) -> dict:
 
     return user_info
 
-
 async def authorize(authorization: Optional[str] = Header(None, alias="Authorization")) -> dict:
     """
-    FastAPI dependency for protecting endpoints with Google OAuth.
+    FastAPI dependency for protecting endpoints.
     
-    Expects header: Authorization: Bearer <access_token>
-    
-    Args:
-        authorization: The Authorization header value
+    Supports two authentication methods:
+    1. Google OAuth 2.0 tokens (for mobile app users in production)
+    2. API Keys (for development, testing, and direct sensor access)
+
+    API Keys are checked first - if no match, falls back to Google OAuth.
     
     Returns:
-        dict: Authenticated user info (email, sub, etc.)
+        dict: Authenticated entity info
     
     Raises:
         HTTPException: 401 if missing/invalid authorization
-    
-    Usage:
-        @app.get("/protected")
-        async def protected_route(user: dict = Depends(authorize)):
-            return {"email": user["email"]}
     """
     if not authorization:
         raise HTTPException(
@@ -81,23 +77,19 @@ async def authorize(authorization: Optional[str] = Header(None, alias="Authoriza
             detail="Empty token provided"
         )
     
-    user_info = verify_token(token)
+    # Check API key first (faster, no network call)
+    if token in SENSOR_API_KEYS:
+        return {
+            "type": "api_key",
+            "email": f"sensor-{token[:8]}@cityairq.local"
+        }
     
-    return user_info
-
+    # Fallback to Google OAuth
+    return verify_google_token(token)
 
 async def optional_authorize(authorization: Optional[str] = Header(None, alias="Authorization")) -> Optional[dict]:
     """
-    Optional authentication - returns None if no token provided, user info if valid.
-    
-    Useful for endpoints that work for both authenticated and anonymous users.
-    
-    Usage:
-        @app.get("/public-or-private")
-        async def route(user: Optional[dict] = Depends(optional_authorize)):
-            if user:
-                return {"message": f"Hello {user['email']}"}
-            return {"message": "Hello anonymous"}
+    Optional authentication - returns None if no token provided.
     """
     if not authorization:
         return None

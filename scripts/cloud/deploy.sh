@@ -46,6 +46,11 @@ kubectl create secret generic google-maps-secret \
     --from-file=GOOGLE_MAPS_API_KEY=google-maps-key.txt \
     --dry-run=client -o yaml | kubectl apply -f -
 
+# Ingest auth key (API developers, no OAuth)
+kubectl create secret generic sensor-api-secret \
+  --from-file=SENSOR_API_KEYS=sensor-api-key.txt \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 # Database credentials
 kubectl create secret generic database-credentials \
     --from-literal=DB_USER=admin \
