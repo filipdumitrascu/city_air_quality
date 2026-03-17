@@ -60,7 +60,7 @@ def import_excel(filename):
             if errors <= 5:
                 print(f"  Error row {i}: {e}")
         
-        if (i + 1) % 1000 == 0:
+        if (i + 1) % 100 == 0:
             conn.commit()
             print(f"  {i+1}/{len(df)} rows... ({inserted} inserted, {errors} errors)", end='\r')
     
