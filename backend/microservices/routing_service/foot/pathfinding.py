@@ -36,11 +36,25 @@ class AStarPathfinder:
         """
         logger.info(f"Finding path: {start} -> {goal}, heuristic={self.heuristic_name}")
         
+        if not self.graph.nodes:
+            logger.error("Graph has no nodes")
+            return None
+        
         # Snap to nearest graph nodes
         start_node = self.graph.get_nearest_node(start[0], start[1])
         goal_node = self.graph.get_nearest_node(goal[0], goal[1])
         
         logger.info(f"Snapped: {start_node} -> {goal_node}")
+        logger.info(f"Graph: {len(self.graph.nodes)} nodes, edges for start: {len(self.graph.get_neighbors(start_node))}")
+        
+        # If start or goal not connected, try to connect them
+        if not self.graph.get_neighbors(start_node):
+            logger.warning(f"Start node has no neighbors, adding virtual connections")
+            self._add_virtual_connections(start_node)
+        
+        if not self.graph.get_neighbors(goal_node):
+            logger.warning(f"Goal node has no neighbors, adding virtual connections")
+            self._add_virtual_connections(goal_node)
         
         # Priority queue: (f_score, node)
         open_set = [(0.0, start_node)]
@@ -90,6 +104,31 @@ class AStarPathfinder:
         
         logger.warning(f"No path found after {self.nodes_evaluated} nodes")
         return None
+    
+    def _add_virtual_connections(self, node: Tuple[float, float], k: int = 5):
+        """Add connections from isolated node to k nearest nodes"""
+        if node not in self.graph.nodes:
+            self.graph.nodes.add(node)
+        
+        # Find k nearest nodes
+        nearest = sorted(
+            [n for n in self.graph.nodes if n != node],
+            key=lambda n: self.graph._haversine(node, n)
+        )[:k]
+        
+        connections = []
+        for other in nearest:
+            dist = self.graph._haversine(node, other)
+            aqi = self.graph.get_pollution(other).get('aqi', 50)
+            weight = dist * (1 + self.graph.alpha * (aqi / 100))
+            connections.append((other, weight))
+            
+            # Also add reverse connection
+            if other in self.graph.edges:
+                self.graph.edges[other].append((node, weight))
+        
+        self.graph.edges[node] = connections
+        logger.info(f"Added {len(connections)} virtual connections for {node}")
     
     def _reconstruct_path(
         self,
