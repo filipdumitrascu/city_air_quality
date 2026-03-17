@@ -144,7 +144,7 @@ for i in {1..15}; do
 done
 
 # Optional: Import sample data (Fixed sensors)
-EXCEL_FILE_FIXED="../backend/config/questdb/xlsxs/cityairq_sensor_data_fixed.xlsx"
+EXCEL_FILE_FIXED="../backend/config/questdb/xlsxs/fixed_sensors_2026.xlsx"
 if [ -f "$EXCEL_FILE_FIXED" ]; then
     echo ""
     echo -n "Importing fixed sensors data..."
@@ -152,7 +152,7 @@ if [ -f "$EXCEL_FILE_FIXED" ]; then
 fi
 
 # Optional: Import sample data (Mobile sensors)
-EXCEL_FILE_MOBILE="../backend/config/questdb//xlsxs/cityairq_sensor_data_mobile.xlsx"
+EXCEL_FILE_MOBILE="../backend/config/questdb//xlsxs/mobile_sensors_2026.xlsx"
 if [ -f "$EXCEL_FILE_MOBILE" ]; then
     echo -n "Importing mobile sensors data..."
     python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_MOBILE" 2>/dev/null && echo " done" || echo " skipped"
