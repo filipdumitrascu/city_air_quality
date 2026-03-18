@@ -17,6 +17,7 @@ def haversine_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     
     return R * 2 * math.asin(math.sqrt(a))
 
+
 def euclidean_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """Straight-line distance (fast, approximate)"""
     lat1, lon1 = coord1
@@ -26,6 +27,7 @@ def euclidean_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     lon_km = (lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
     
     return math.sqrt(lat_km ** 2 + lon_km ** 2)
+
 
 def manhattan_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """Grid-based (taxicab) distance"""
@@ -37,6 +39,7 @@ def manhattan_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     
     return lat_km + lon_km
 
+
 def diagonal_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """Chebyshev distance"""
     lat1, lon1 = coord1
@@ -46,6 +49,7 @@ def diagonal_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) 
     lon_km = abs(lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
     
     return max(lat_km, lon_km)
+
 
 def octile_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """8-directional movement"""
@@ -76,27 +80,31 @@ def get_heuristic(name: str) -> Callable:
 
 
 # ROUTE STATISTICS
+# All pollutant keys for stats calculation
+POLLUTANT_KEYS = ['pm10', 'pm2_5', 'pm1_0', 'no2', 'co', 'co2', 'nh3', 'vocs']
+
 def calculate_route_stats(
     path: List[Tuple[float, float]],
     pollution_data: Dict[Tuple[float, float], Dict[str, float]]
 ) -> Dict:
     """
-    Calculate route statistics.
+    Calculate route statistics for all pollutants.
     
     Only counts valid pollution values (>= 0).
+    Returns avg and max for each pollutant that has data.
     """
     if not path or len(path) < 2:
-        return {
-            "total_distance_km": 0.0,
-            "avg_pm10": 0.0, "max_pm10": 0.0,
-            "avg_pm2_5": 0.0, "max_pm2_5": 0.0,
-            "avg_aqi": 0.0, "max_aqi": 0.0
-        }
+        result = {"total_distance_km": 0.0, "avg_aqi": 0.0, "max_aqi": 0.0}
+        for key in POLLUTANT_KEYS:
+            result[f"avg_{key}"] = -1
+            result[f"max_{key}"] = -1
+        return result
     
     total_distance = 0.0
-    pm10_values = []
-    pm2_5_values = []
     aqi_values = []
+    
+    # Collect values for each pollutant
+    pollutant_values = {key: [] for key in POLLUTANT_KEYS}
     
     for i in range(len(path)):
         if i > 0:
@@ -104,24 +112,32 @@ def calculate_route_stats(
         
         pollution = pollution_data.get(path[i], {})
         
-        # Only include valid values (not -1)
-        pm10 = pollution.get('pm10', -1)
-        pm2_5 = pollution.get('pm2_5', -1)
+        # Collect AQI
         aqi = pollution.get('aqi', -1)
-        
-        if pm10 >= 0:
-            pm10_values.append(pm10)
-        if pm2_5 >= 0:
-            pm2_5_values.append(pm2_5)
         if aqi >= 0:
             aqi_values.append(aqi)
+        
+        # Collect each pollutant
+        for key in POLLUTANT_KEYS:
+            val = pollution.get(key, -1)
+            if val >= 0:
+                pollutant_values[key].append(val)
     
-    return {
+    # Build result dict
+    result = {
         "total_distance_km": round(total_distance, 2),
-        "avg_pm10": round(sum(pm10_values) / len(pm10_values), 1) if pm10_values else 0.0,
-        "max_pm10": round(max(pm10_values), 1) if pm10_values else 0.0,
-        "avg_pm2_5": round(sum(pm2_5_values) / len(pm2_5_values), 1) if pm2_5_values else 0.0,
-        "max_pm2_5": round(max(pm2_5_values), 1) if pm2_5_values else 0.0,
         "avg_aqi": round(sum(aqi_values) / len(aqi_values), 1) if aqi_values else 0.0,
         "max_aqi": round(max(aqi_values), 1) if aqi_values else 0.0
     }
+    
+    # Add stats for each pollutant (only if we have data)
+    for key in POLLUTANT_KEYS:
+        values = pollutant_values[key]
+        if values:
+            result[f"avg_{key}"] = round(sum(values) / len(values), 1)
+            result[f"max_{key}"] = round(max(values), 1)
+        else:
+            result[f"avg_{key}"] = -1  # No data
+            result[f"max_{key}"] = -1
+    
+    return result

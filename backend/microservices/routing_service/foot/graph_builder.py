@@ -13,27 +13,64 @@ from config import get_config
 
 logger = logging.getLogger(__name__)
 
+# AQI CALCULATION - Weighted average with EPA/WHO thresholds
+# Pollutant configuration: thresholds (good/moderate/unhealthy), weight
+POLLUTANT_CONFIG = {
+    'pm2_5':  {'thresholds': [12, 35, 55],      'weight': 3.0},
+    'pm10':   {'thresholds': [54, 154, 254],    'weight': 2.0},
+    'no2':    {'thresholds': [53, 100, 360],    'weight': 2.0},
+    'co':     {'thresholds': [4.4, 9.4, 12.4],  'weight': 1.5},
+    'pm1_0':  {'thresholds': [10, 25, 50],      'weight': 1.5},
+    'co2':    {'thresholds': [600, 1000, 2000], 'weight': 1.0},
+    'vocs':   {'thresholds': [250, 500, 1000],  'weight': 1.0},
+    'nh3':    {'thresholds': [25, 50, 100],     'weight': 0.5},
+}
 
-def calculate_aqi(pm10: float, pm2_5: float) -> Optional[float]:
+
+def normalize_pollutant(value: float, thresholds: List[float]) -> float:
+    """Normalize pollutant value to 0-100+ scale based on EPA thresholds."""
+    if value <= thresholds[0]:
+        # Good: 0-50
+        return (value / thresholds[0]) * 50 if thresholds[0] > 0 else 0
+    elif value <= thresholds[1]:
+        # Moderate: 50-100
+        return 50 + ((value - thresholds[0]) / (thresholds[1] - thresholds[0])) * 50
+    elif value <= thresholds[2]:
+        # Unhealthy: 100-150
+        return 100 + ((value - thresholds[1]) / (thresholds[2] - thresholds[1])) * 50
+    else:
+        # Very unhealthy: 150+
+        return 150 + ((value - thresholds[2]) / thresholds[2]) * 50
+
+
+def calculate_aqi(data: Dict[str, float]) -> Optional[float]:
     """
-    Calculate AQI from PM10 and PM2.5.
+    Calculate AQI from all available pollutants using weighted average.
     
-    - Ignores values of -1 (missing data)
-    - PM2.5 weighted 1.5x (more harmful to health)
+    - Ignores values of -1 or None (missing data)
+    - Uses EPA/WHO thresholds for normalization
+    - Returns weighted average of normalized values
     - Returns None if no valid data
     """
-    valid_values = []
+    weighted_sum = 0.0
+    total_weight = 0.0
     
-    if pm10 is not None and pm10 >= 0:
-        valid_values.append(pm10)
+    for pollutant, config in POLLUTANT_CONFIG.items():
+        value = data.get(pollutant)
+        if value is not None and value >= 0:
+            normalized = normalize_pollutant(value, config['thresholds'])
+            weighted_sum += normalized * config['weight']
+            total_weight += config['weight']
     
-    if pm2_5 is not None and pm2_5 >= 0:
-        valid_values.append(pm2_5 * 1.5)  # PM2.5 weighted higher
-    
-    if not valid_values:
+    if total_weight == 0:
         return None
     
-    return sum(valid_values) / len(valid_values)
+    return weighted_sum / total_weight
+
+
+def calculate_aqi_legacy(pm10: float, pm2_5: float) -> Optional[float]:
+    """Legacy function for backward compatibility."""
+    return calculate_aqi({'pm10': pm10, 'pm2_5': pm2_5})
 
 
 class PollutionGraph:
@@ -58,11 +95,14 @@ class PollutionGraph:
         Add pollution readings to graph.
         
         Expects list of dicts from Database Service with:
-        - latitude, longitude, pm10, pm2_5
+        - latitude, longitude
+        - pm10, pm2_5, pm1_0, no2, co, co2, nh3, vocs (all optional)
         
         Values of -1 are kept but excluded from AQI calculation.
         """
         logger.info(f"Adding {len(readings)} pollution readings")
+        
+        pollutant_keys = ['pm10', 'pm2_5', 'pm1_0', 'no2', 'co', 'co2', 'nh3', 'vocs']
         
         for reading in readings:
             try:
@@ -70,57 +110,60 @@ class PollutionGraph:
                 if isinstance(reading, dict):
                     lat = float(reading.get("latitude", 0))
                     lon = float(reading.get("longitude", 0))
-                    pm10 = reading.get("pm10")
-                    pm2_5 = reading.get("pm2_5")
+                    
+                    # Extract all pollutants
+                    pollutants = {}
+                    for key in pollutant_keys:
+                        val = reading.get(key)
+                        pollutants[key] = float(val) if val is not None else -1
                 else:
-                    # Legacy list format [sensor_id, sensor_type, ts, lat, lon, ...]
+                    # Legacy list format - assume order matches schema
                     lat = float(reading[3])
                     lon = float(reading[4])
-                    pm10 = reading[5] if len(reading) > 5 else None
-                    pm2_5 = reading[6] if len(reading) > 6 else None
-                
-                # Convert to float, handling None
-                pm10 = float(pm10) if pm10 is not None else -1
-                pm2_5 = float(pm2_5) if pm2_5 is not None else -1
+                    pollutants = {
+                        'pm10': float(reading[5]) if len(reading) > 5 and reading[5] is not None else -1,
+                        'pm2_5': float(reading[6]) if len(reading) > 6 and reading[6] is not None else -1,
+                        'no2': float(reading[7]) if len(reading) > 7 and reading[7] is not None else -1,
+                        'co': float(reading[8]) if len(reading) > 8 and reading[8] is not None else -1,
+                        'co2': float(reading[9]) if len(reading) > 9 and reading[9] is not None else -1,
+                        'pm1_0': float(reading[10]) if len(reading) > 10 and reading[10] is not None else -1,
+                        'nh3': float(reading[11]) if len(reading) > 11 and reading[11] is not None else -1,
+                        'vocs': float(reading[12]) if len(reading) > 12 and reading[12] is not None else -1,
+                    }
                 
                 # Snap to grid
                 grid_lat = round(lat / self.grid_resolution) * self.grid_resolution
                 grid_lon = round(lon / self.grid_resolution) * self.grid_resolution
                 grid_point = (grid_lat, grid_lon)
                 
-                # Calculate AQI (ignores -1 values)
-                aqi = calculate_aqi(pm10, pm2_5)
+                # Calculate AQI using all available pollutants
+                aqi = calculate_aqi(pollutants)
                 
                 if aqi is None:
-                    # No valid pollution data at this point
                     aqi = 50.0  # Default neutral value
                 
                 # Average if multiple readings at same grid point
                 if grid_point in self.pollution_data:
                     existing = self.pollution_data[grid_point]
                     
-                    # Average only valid values
-                    new_pm10 = pm10 if pm10 >= 0 else existing.get('pm10', -1)
-                    new_pm2_5 = pm2_5 if pm2_5 >= 0 else existing.get('pm2_5', -1)
+                    # Average each pollutant separately
+                    merged = {}
+                    for key in pollutant_keys:
+                        old_val = existing.get(key, -1)
+                        new_val = pollutants.get(key, -1)
+                        
+                        if old_val >= 0 and new_val >= 0:
+                            merged[key] = (old_val + new_val) / 2
+                        elif new_val >= 0:
+                            merged[key] = new_val
+                        else:
+                            merged[key] = old_val
                     
-                    if existing.get('pm10', -1) >= 0 and pm10 >= 0:
-                        new_pm10 = (existing['pm10'] + pm10) / 2
-                    if existing.get('pm2_5', -1) >= 0 and pm2_5 >= 0:
-                        new_pm2_5 = (existing['pm2_5'] + pm2_5) / 2
-                    
-                    new_aqi = calculate_aqi(new_pm10, new_pm2_5) or existing.get('aqi', 50)
-                    
-                    self.pollution_data[grid_point] = {
-                        'pm10': new_pm10,
-                        'pm2_5': new_pm2_5,
-                        'aqi': new_aqi
-                    }
+                    merged['aqi'] = calculate_aqi(merged) or existing.get('aqi', 50)
+                    self.pollution_data[grid_point] = merged
                 else:
-                    self.pollution_data[grid_point] = {
-                        'pm10': pm10,
-                        'pm2_5': pm2_5,
-                        'aqi': aqi
-                    }
+                    pollutants['aqi'] = aqi
+                    self.pollution_data[grid_point] = pollutants
                 
                 self.nodes.add(grid_point)
                 
@@ -147,25 +190,28 @@ class PollutionGraph:
         else:
             min_aqi, aqi_range = 0, 1
         
-        # Max edge distance (diagonal of grid cell)
-        max_edge_dist = self.grid_resolution * 111 * 1.5  # ~330m
+        # Connect each node to k nearest neighbors (handles sparse data)
+        k_neighbors = 8  # Connect to up to 8 nearest nodes
+        max_edge_dist = 2.0  # Maximum 2km edge (prevents connecting across city)
         
         for node in self.nodes:
-            neighbors = []
+            # Sort all other nodes by distance
+            others_by_dist = sorted(
+                [(other, self._haversine(node, other)) for other in self.nodes if other != node],
+                key=lambda x: x[1]
+            )
             
-            for other in self.nodes:
-                if node == other:
-                    continue
+            neighbors = []
+            for other, distance in others_by_dist[:k_neighbors]:
+                if distance > max_edge_dist:
+                    break  # Don't connect if too far
                 
-                distance = self._haversine(node, other)
+                # Weight based on pollution at destination
+                other_aqi = self.pollution_data.get(other, {}).get('aqi', 50)
+                normalized_aqi = (other_aqi - min_aqi) / aqi_range
                 
-                if distance <= max_edge_dist:
-                    # Weight based on pollution at destination
-                    other_aqi = self.pollution_data.get(other, {}).get('aqi', 50)
-                    normalized_aqi = (other_aqi - min_aqi) / aqi_range
-                    
-                    weight = distance * (1 + self.alpha * normalized_aqi)
-                    neighbors.append((other, weight))
+                weight = distance * (1 + self.alpha * normalized_aqi)
+                neighbors.append((other, weight))
             
             self.edges[node] = neighbors
         

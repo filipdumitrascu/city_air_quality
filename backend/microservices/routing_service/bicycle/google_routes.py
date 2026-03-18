@@ -31,6 +31,7 @@ def haversine_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     
     return R * 2 * math.asin(math.sqrt(a))
 
+
 def sample_waypoints(path: List[Tuple[float, float]], sample_distance_m: int = 200) -> List[Tuple[float, float]]:
     """Sample waypoints at regular intervals"""
     if len(path) <= 2:
@@ -167,48 +168,62 @@ class GoogleRoutesClient:
         pollution_data: List[Dict],
         resolution: float = 0.002
     ) -> Dict[Tuple[float, float], Dict[str, float]]:
-        """Build pollution grid from database readings"""
+        """Build pollution grid from database readings - all 8 pollutants"""
         grid = {}
+        pollutant_keys = ['pm10', 'pm2_5', 'pm1_0', 'no2', 'co', 'co2', 'nh3', 'vocs']
+        
+        # Import AQI calculation from graph_builder
+        from foot.graph_builder import calculate_aqi
         
         for reading in pollution_data:
             try:
                 if isinstance(reading, dict):
                     lat = float(reading.get("latitude", 0))
                     lon = float(reading.get("longitude", 0))
-                    pm10 = reading.get("pm10", -1)
-                    pm2_5 = reading.get("pm2_5", -1)
+                    
+                    pollutants = {}
+                    for key in pollutant_keys:
+                        val = reading.get(key, -1)
+                        pollutants[key] = float(val) if val is not None else -1
                 else:
                     lat = float(reading[3])
                     lon = float(reading[4])
-                    pm10 = reading[5] if len(reading) > 5 else -1
-                    pm2_5 = reading[6] if len(reading) > 6 else -1
-                
-                pm10 = float(pm10) if pm10 is not None else -1
-                pm2_5 = float(pm2_5) if pm2_5 is not None else -1
+                    pollutants = {
+                        'pm10': float(reading[5]) if len(reading) > 5 and reading[5] is not None else -1,
+                        'pm2_5': float(reading[6]) if len(reading) > 6 and reading[6] is not None else -1,
+                        'no2': float(reading[7]) if len(reading) > 7 and reading[7] is not None else -1,
+                        'co': float(reading[8]) if len(reading) > 8 and reading[8] is not None else -1,
+                        'co2': float(reading[9]) if len(reading) > 9 and reading[9] is not None else -1,
+                        'pm1_0': float(reading[10]) if len(reading) > 10 and reading[10] is not None else -1,
+                        'nh3': float(reading[11]) if len(reading) > 11 and reading[11] is not None else -1,
+                        'vocs': float(reading[12]) if len(reading) > 12 and reading[12] is not None else -1,
+                    }
                 
                 grid_point = (
                     round(lat / resolution) * resolution,
                     round(lon / resolution) * resolution
                 )
                 
-                # Calculate AQI from valid values only
-                valid = []
-                if pm10 >= 0:
-                    valid.append(pm10)
-                if pm2_5 >= 0:
-                    valid.append(pm2_5 * 1.5)
-                
-                aqi = sum(valid) / len(valid) if valid else 50.0
+                # Calculate AQI using weighted formula
+                aqi = calculate_aqi(pollutants) or 50.0
                 
                 if grid_point in grid:
                     old = grid[grid_point]
-                    grid[grid_point] = {
-                        'pm10': (old['pm10'] + pm10) / 2 if pm10 >= 0 and old['pm10'] >= 0 else max(old['pm10'], pm10),
-                        'pm2_5': (old['pm2_5'] + pm2_5) / 2 if pm2_5 >= 0 and old['pm2_5'] >= 0 else max(old['pm2_5'], pm2_5),
-                        'aqi': (old['aqi'] + aqi) / 2
-                    }
+                    merged = {}
+                    for key in pollutant_keys:
+                        old_val = old.get(key, -1)
+                        new_val = pollutants.get(key, -1)
+                        if old_val >= 0 and new_val >= 0:
+                            merged[key] = (old_val + new_val) / 2
+                        elif new_val >= 0:
+                            merged[key] = new_val
+                        else:
+                            merged[key] = old_val
+                    merged['aqi'] = (old['aqi'] + aqi) / 2
+                    grid[grid_point] = merged
                 else:
-                    grid[grid_point] = {'pm10': pm10, 'pm2_5': pm2_5, 'aqi': aqi}
+                    pollutants['aqi'] = aqi
+                    grid[grid_point] = pollutants
                     
             except Exception as e:
                 logger.warning(f"Skipping reading: {e}")
@@ -222,8 +237,10 @@ class GoogleRoutesClient:
         pollution_grid: Dict[Tuple[float, float], Dict[str, float]],
         resolution: float = 0.002
     ) -> Dict[str, float]:
-        """Calculate pollution statistics for waypoints"""
-        pm10_vals, pm2_5_vals, aqi_vals = [], [], []
+        """Calculate pollution statistics for waypoints - all 8 pollutants"""
+        pollutant_keys = ['pm10', 'pm2_5', 'pm1_0', 'no2', 'co', 'co2', 'nh3', 'vocs']
+        pollutant_values = {key: [] for key in pollutant_keys}
+        aqi_vals = []
         
         for lat, lon in waypoints:
             grid_point = (
@@ -237,22 +254,33 @@ class GoogleRoutesClient:
                 data = self._find_nearest(grid_point, pollution_grid)
             
             if data:
-                if data.get('pm10', -1) >= 0:
-                    pm10_vals.append(data['pm10'])
-                if data.get('pm2_5', -1) >= 0:
-                    pm2_5_vals.append(data['pm2_5'])
+                # Collect each pollutant
+                for key in pollutant_keys:
+                    val = data.get(key, -1)
+                    if val >= 0:
+                        pollutant_values[key].append(val)
+                
                 aqi_vals.append(data.get('aqi', 50))
             else:
                 aqi_vals.append(50)  # Default
         
-        return {
-            'avg_pm10': round(sum(pm10_vals) / len(pm10_vals), 1) if pm10_vals else 0,
-            'max_pm10': round(max(pm10_vals), 1) if pm10_vals else 0,
-            'avg_pm2_5': round(sum(pm2_5_vals) / len(pm2_5_vals), 1) if pm2_5_vals else 0,
-            'max_pm2_5': round(max(pm2_5_vals), 1) if pm2_5_vals else 0,
+        # Build result
+        result = {
             'avg_aqi': round(sum(aqi_vals) / len(aqi_vals), 1) if aqi_vals else 50,
             'max_aqi': round(max(aqi_vals), 1) if aqi_vals else 50,
         }
+        
+        # Add stats for each pollutant
+        for key in pollutant_keys:
+            vals = pollutant_values[key]
+            if vals:
+                result[f'avg_{key}'] = round(sum(vals) / len(vals), 1)
+                result[f'max_{key}'] = round(max(vals), 1)
+            else:
+                result[f'avg_{key}'] = -1
+                result[f'max_{key}'] = -1
+        
+        return result
     
     def _find_nearest(
         self,
@@ -276,7 +304,13 @@ class GoogleRoutesClient:
         lon: float,
         pollution_data: List[Dict]
     ) -> Dict[str, float]:
-        """Get pollution at specific point"""
+        """Get pollution at specific point - returns all pollutants"""
         grid = self._build_pollution_grid(pollution_data)
         point = (round(lat / 0.002) * 0.002, round(lon / 0.002) * 0.002)
-        return grid.get(point, {'pm10': -1, 'pm2_5': -1, 'aqi': 50})
+        
+        default = {
+            'pm10': -1, 'pm2_5': -1, 'pm1_0': -1, 
+            'no2': -1, 'co': -1, 'co2': -1,
+            'nh3': -1, 'vocs': -1, 'aqi': 50
+        }
+        return grid.get(point, default)

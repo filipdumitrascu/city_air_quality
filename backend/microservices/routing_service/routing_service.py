@@ -21,6 +21,7 @@ from foot.utils import calculate_route_stats, HEURISTICS
 from bicycle.google_routes import GoogleRoutesClient
 
 
+# CONFIGURATION
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -63,7 +64,6 @@ app = FastAPI(
 )
 
 Instrumentator().instrument(app).expose(app)
-
 
 # HEALTH ENDPOINTS
 @app.get("/")
@@ -117,7 +117,6 @@ async def list_transport_modes():
 
 # ROUTE CALCULATION
 @app.post("/route", response_model=RouteResponse)
-
 async def calculate_route(request: RouteRequest):
     """
     Calculate pollution-aware route.
@@ -143,13 +142,13 @@ async def calculate_route(request: RouteRequest):
 
 async def _calculate_foot_route(request: RouteRequest, start_time: float) -> RouteResponse:
     """A* pathfinding on pollution grid"""
-
+    
     # Check cache
     cache_key = cache_manager.generate_cache_key(
         request.start, request.goal, request.alpha,
         request.sensor_types, f"foot_{request.heuristic}"
     )
-
+    
     cached = cache_manager.get_cached_route(cache_key)
     if cached:
         cached["route"]["properties"]["cached"] = True
@@ -202,24 +201,32 @@ async def _calculate_foot_route(request: RouteRequest, start_time: float) -> Rou
             aqi=p.get('aqi')
         ))
     
+    # Build properties with all pollutant stats
+    props = {
+        "distance_km": stats["total_distance_km"],
+        "avg_aqi": stats["avg_aqi"],
+        "max_aqi": stats["max_aqi"],
+        "calculation_time_ms": calc_time,
+        "sensor_types_used": request.sensor_types,
+        "heuristic_used": request.heuristic,
+        "transport_mode": "foot",
+        "nodes_evaluated": pathfinder.nodes_evaluated,
+        "cached": False
+    }
+    
+    # Add individual pollutant stats (only if data available)
+    pollutant_keys = ['pm10', 'pm2_5', 'pm1_0', 'no2', 'co', 'co2', 'nh3', 'vocs']
+    for key in pollutant_keys:
+        avg_val = stats.get(f"avg_{key}", -1)
+        max_val = stats.get(f"max_{key}", -1)
+        if avg_val >= 0:
+            props[f"avg_{key}"] = avg_val
+            props[f"max_{key}"] = max_val
+    
     response_data = {
         "route": GeoJSONFeature(
             geometry=GeoJSONGeometry(coordinates=geojson_coords),
-            properties=GeoJSONProperties(
-                distance_km=stats["total_distance_km"],
-                avg_pm10=stats["avg_pm10"],
-                max_pm10=stats["max_pm10"],
-                avg_pm2_5=stats["avg_pm2_5"],
-                max_pm2_5=stats["max_pm2_5"],
-                avg_aqi=stats["avg_aqi"],
-                max_aqi=stats["max_aqi"],
-                calculation_time_ms=calc_time,
-                sensor_types_used=request.sensor_types,
-                heuristic_used=request.heuristic,
-                transport_mode="foot",
-                nodes_evaluated=pathfinder.nodes_evaluated,
-                cached=False
-            )
+            properties=GeoJSONProperties(**props)
         ).model_dump(),
         "waypoints": [w.model_dump() for w in waypoints]
     }
@@ -229,7 +236,6 @@ async def _calculate_foot_route(request: RouteRequest, start_time: float) -> Rou
     logger.info(f"Foot route: {len(path)} points, {stats['total_distance_km']}km, {calc_time}ms")
     
     return RouteResponse(**response_data)
-
 
 async def _calculate_bicycle_route(request: RouteRequest, start_time: float) -> RouteResponse:
     """Google Routes API with pollution scoring"""
@@ -286,24 +292,32 @@ async def _calculate_bicycle_route(request: RouteRequest, start_time: float) -> 
             aqi=p.get('aqi')
         ))
     
+    # Build properties with all pollutant stats
+    props = {
+        "distance_km": round(best_route["distance_km"], 2),
+        "duration_minutes": round(best_route["duration_minutes"], 1),
+        "avg_aqi": pollution_stats["avg_aqi"],
+        "max_aqi": pollution_stats["max_aqi"],
+        "calculation_time_ms": calc_time,
+        "sensor_types_used": request.sensor_types,
+        "transport_mode": "bicycle",
+        "google_routes_considered": len(all_routes),
+        "cached": False
+    }
+    
+    # Add individual pollutant stats (only if data available)
+    pollutant_keys = ['pm10', 'pm2_5', 'pm1_0', 'no2', 'co', 'co2', 'nh3', 'vocs']
+    for key in pollutant_keys:
+        avg_val = pollution_stats.get(f"avg_{key}", -1)
+        max_val = pollution_stats.get(f"max_{key}", -1)
+        if avg_val >= 0:
+            props[f"avg_{key}"] = avg_val
+            props[f"max_{key}"] = max_val
+    
     response_data = {
         "route": GeoJSONFeature(
             geometry=GeoJSONGeometry(coordinates=geojson_coords),
-            properties=GeoJSONProperties(
-                distance_km=round(best_route["distance_km"], 2),
-                duration_minutes=round(best_route["duration_minutes"], 1),
-                avg_pm10=pollution_stats["avg_pm10"],
-                max_pm10=pollution_stats["max_pm10"],
-                avg_pm2_5=pollution_stats["avg_pm2_5"],
-                max_pm2_5=pollution_stats["max_pm2_5"],
-                avg_aqi=pollution_stats["avg_aqi"],
-                max_aqi=pollution_stats["max_aqi"],
-                calculation_time_ms=calc_time,
-                sensor_types_used=request.sensor_types,
-                transport_mode="bicycle",
-                google_routes_considered=len(all_routes),
-                cached=False
-            )
+            properties=GeoJSONProperties(**props)
         ).model_dump(),
         "waypoints": [w.model_dump() for w in waypoints]
     }
@@ -313,6 +327,7 @@ async def _calculate_bicycle_route(request: RouteRequest, start_time: float) -> 
     logger.info(f"Bicycle route: {best_route['distance_km']:.2f}km, {calc_time}ms")
     
     return RouteResponse(**response_data)
+
 
 
 # CACHE MANAGEMENT

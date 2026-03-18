@@ -48,21 +48,32 @@ class GeoJSONGeometry(BaseModel):
 
 
 class GeoJSONProperties(BaseModel):
-    """Route properties with pollution stats"""
+    """Route properties with pollution stats for all 8 pollutants"""
     distance_km: float
     duration_minutes: Optional[float] = None
     
-    # PM10
-    avg_pm10: float
-    max_pm10: float
-    
-    # PM2.5
-    avg_pm2_5: float
-    max_pm2_5: float
-    
-    # Combined AQI
+    # Combined AQI (always present)
     avg_aqi: float
     max_aqi: float
+    
+    # Individual pollutants (Optional - only present if data available)
+    # Values of -1 mean no data for that pollutant on this route
+    avg_pm10: Optional[float] = None
+    max_pm10: Optional[float] = None
+    avg_pm2_5: Optional[float] = None
+    max_pm2_5: Optional[float] = None
+    avg_pm1_0: Optional[float] = None
+    max_pm1_0: Optional[float] = None
+    avg_no2: Optional[float] = None
+    max_no2: Optional[float] = None
+    avg_co: Optional[float] = None
+    max_co: Optional[float] = None
+    avg_co2: Optional[float] = None
+    max_co2: Optional[float] = None
+    avg_nh3: Optional[float] = None
+    max_nh3: Optional[float] = None
+    avg_vocs: Optional[float] = None
+    max_vocs: Optional[float] = None
     
     # Metadata
     calculation_time_ms: float

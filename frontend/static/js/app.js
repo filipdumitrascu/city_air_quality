@@ -36,15 +36,57 @@ const endIcon = L.divIcon({
     iconAnchor: [14, 14]
 });
 
-// Calculate combined Air Quality Index (PM10 + PM2.5 only)
-function calculateAQI(pm10, pm2_5) {
-    const pm10Val = (pm10 && pm10 >= 0) ? pm10 : 0;
-    const pm25Val = (pm2_5 && pm2_5 >= 0) ? pm2_5 * 1.5 : 0;
+// AQI CALCULATION - Weighted average with EPA/WHO thresholds
+// Pollutant configuration: thresholds (good/moderate/unhealthy), weight, unit
+const POLLUTANT_CONFIG = {
+    pm2_5:  { thresholds: [12, 35, 55],      weight: 3.0, unit: 'ug/m3', label: 'PM2.5' },
+    pm10:   { thresholds: [54, 154, 254],    weight: 2.0, unit: 'ug/m3', label: 'PM10' },
+    no2:    { thresholds: [53, 100, 360],    weight: 2.0, unit: 'ppb',   label: 'NO2' },
+    co:     { thresholds: [4.4, 9.4, 12.4],  weight: 1.5, unit: 'ppm',   label: 'CO' },
+    pm1_0:  { thresholds: [10, 25, 50],      weight: 1.5, unit: 'ug/m3', label: 'PM1' },
+    co2:    { thresholds: [600, 1000, 2000], weight: 1.0, unit: 'ppm',   label: 'CO2' },
+    vocs:   { thresholds: [250, 500, 1000],  weight: 1.0, unit: 'ppb',   label: 'VOCs' },
+    nh3:    { thresholds: [25, 50, 100],     weight: 0.5, unit: 'ppm',   label: 'NH3' }
+};
+
+// Normalize pollutant value to 0-100 scale based on thresholds
+function normalizePollutant(value, thresholds) {
+    if (value <= thresholds[0]) {
+        // Good: 0-50
+        return (value / thresholds[0]) * 50;
+    } else if (value <= thresholds[1]) {
+        // Moderate: 50-100
+        return 50 + ((value - thresholds[0]) / (thresholds[1] - thresholds[0])) * 50;
+    } else if (value <= thresholds[2]) {
+        // Unhealthy: 100-150
+        return 100 + ((value - thresholds[1]) / (thresholds[2] - thresholds[1])) * 50;
+    } else {
+        // Very unhealthy: 150+
+        return 150 + ((value - thresholds[2]) / thresholds[2]) * 50;
+    }
+}
+
+// Calculate combined AQI from all available pollutants
+function calculateAQI(data) {
+    let weightedSum = 0;
+    let totalWeight = 0;
     
-    if (pm10Val === 0 && pm25Val === 0) return 50; // Default
+    for (const [key, config] of Object.entries(POLLUTANT_CONFIG)) {
+        const value = data[key];
+        if (value !== null && value !== undefined && value >= 0) {
+            const normalized = normalizePollutant(value, config.thresholds);
+            weightedSum += normalized * config.weight;
+            totalWeight += config.weight;
+        }
+    }
     
-    const count = (pm10Val > 0 ? 1 : 0) + (pm25Val > 0 ? 1 : 0);
-    return (pm10Val + pm25Val) / count;
+    if (totalWeight === 0) return 50; // Default neutral
+    return weightedSum / totalWeight;
+}
+
+// Legacy function for backward compatibility (2 params)
+function calculateAQILegacy(pm10, pm2_5) {
+    return calculateAQI({ pm10, pm2_5 });
 }
 
 // Get pollution color based on AQI
@@ -382,11 +424,11 @@ function displayRoute(data, originalStart, originalEnd) {
 
 // Format pollution value (handle null/-1)
 function formatValue(val) {
-    if (val === null || val === undefined || val < 0) return 'N/A';
+    if (val === null || val === undefined || val < 0) return null;
     return val.toFixed(1);
 }
 
-// Display route results
+// Display route results - shows only pollutants that have data
 function displayRouteResults(props) {
     const resultsSection = document.getElementById('results-section');
     const resultsDiv = document.getElementById('route-results');
@@ -418,19 +460,39 @@ function displayRouteResults(props) {
         `;
     }
     
+    // AQI always shown
     resultsHtml += `
         <div class="result-item">
             <span class="result-label">Avg AQI</span>
             <span class="result-value">${(props.avg_aqi || 0).toFixed(0)}</span>
         </div>
-        <div class="result-item">
-            <span class="result-label">Avg PM10</span>
-            <span class="result-value">${(props.avg_pm10 || 0).toFixed(1)} ug/m3</span>
-        </div>
-        <div class="result-item">
-            <span class="result-label">Avg PM2.5</span>
-            <span class="result-value">${(props.avg_pm2_5 || 0).toFixed(1)} ug/m3</span>
-        </div>
+    `;
+    
+    // Show only pollutants that have valid data (not null, not -1, not 0)
+    const pollutantDisplay = [
+        { key: 'avg_pm2_5', label: 'Avg PM2.5', unit: 'ug/m3' },
+        { key: 'avg_pm10', label: 'Avg PM10', unit: 'ug/m3' },
+        { key: 'avg_pm1_0', label: 'Avg PM1', unit: 'ug/m3' },
+        { key: 'avg_no2', label: 'Avg NO2', unit: 'ppb' },
+        { key: 'avg_co', label: 'Avg CO', unit: 'ppm' },
+        { key: 'avg_co2', label: 'Avg CO2', unit: 'ppm' },
+        { key: 'avg_nh3', label: 'Avg NH3', unit: 'ppm' },
+        { key: 'avg_vocs', label: 'Avg VOCs', unit: 'ppb' }
+    ];
+    
+    for (const p of pollutantDisplay) {
+        const val = props[p.key];
+        if (val !== null && val !== undefined && val >= 0) {
+            resultsHtml += `
+            <div class="result-item">
+                <span class="result-label">${p.label}</span>
+                <span class="result-value">${val.toFixed(1)} ${p.unit}</span>
+            </div>
+            `;
+        }
+    }
+    
+    resultsHtml += `
         <div class="result-item">
             <span class="result-label">Calculation Time</span>
             <span class="result-value">${props.calculation_time_ms.toFixed(0)} ms</span>
@@ -493,7 +555,7 @@ async function queryPollutionData() {
                 latitude: lat,
                 longitude: lon,
                 radius: radius,
-                layers: ['pm10', 'pm2_5'],
+                layers: ['pm10', 'pm2_5', 'pm1_0', 'no2', 'co', 'co2', 'nh3', 'vocs'],
                 sensor_types: sensorTypes
             })
         });
@@ -525,6 +587,38 @@ async function queryPollutionData() {
     }
 }
 
+// Build popup content showing only measured pollutants (no N/A)
+function buildSensorPopup(reading) {
+    const sensorId = reading.sensor_id;
+    const sensorType = sensorId.startsWith('F') ? 'Fixed' : 'Mobile';
+    const timestamp = reading.timestamp;
+    
+    // Calculate AQI with all available data
+    const aqi = calculateAQI(reading);
+    
+    // Build pollutant lines - only show values >= 0
+    let pollutantLines = '';
+    for (const [key, config] of Object.entries(POLLUTANT_CONFIG)) {
+        const value = reading[key];
+        if (value !== null && value !== undefined && value >= 0) {
+            pollutantLines += `${config.label}: ${value.toFixed(1)} ${config.unit}<br>`;
+        }
+    }
+    
+    if (!pollutantLines) {
+        pollutantLines = '<em>No measurements available</em><br>';
+    }
+    
+    return `
+        <strong>${sensorId}</strong> <em>(${sensorType})</em><br>
+        <small>${timestamp}</small><br>
+        <hr style="margin: 5px 0;">
+        ${pollutantLines}
+        <hr style="margin: 5px 0;">
+        <strong>AQI: ${aqi.toFixed(0)}</strong>
+    `;
+}
+
 // Display pollution data
 function displayPollutionData(readings, centerLat, centerLon, radius) {
     pollutionLayer.clearLayers();
@@ -541,30 +635,33 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
     let mobileCount = 0;
     
     readings.forEach(reading => {
-        // Handle both dict and array formats
-        let sensorId, timestamp, lat, lon, pm10, pm2_5;
-        
+        // Normalize to object format
+        let data;
         if (Array.isArray(reading)) {
-            sensorId = reading[0];
-            timestamp = reading[1];
-            lat = reading[2];
-            lon = reading[3];
-            pm10 = reading[4];
-            pm2_5 = reading[5];
+            // Legacy array format - convert to object
+            data = {
+                sensor_id: reading[0],
+                timestamp: reading[1],
+                latitude: reading[2],
+                longitude: reading[3],
+                pm10: reading[4],
+                pm2_5: reading[5],
+                no2: reading[6],
+                co: reading[7],
+                co2: reading[8],
+                pm1_0: reading[9],
+                nh3: reading[10],
+                vocs: reading[11]
+            };
         } else {
-            sensorId = reading.sensor_id;
-            timestamp = reading.timestamp;
-            lat = reading.latitude;
-            lon = reading.longitude;
-            pm10 = reading.pm10;
-            pm2_5 = reading.pm2_5;
+            data = reading;
         }
         
-        const sensorType = sensorId.startsWith('F') ? 'Fixed' : 'Mobile';
+        const sensorType = data.sensor_id.startsWith('F') ? 'Fixed' : 'Mobile';
         if (sensorType === 'Mobile') mobileCount++;
         else fixedCount++;
         
-        const aqi = calculateAQI(pm10, pm2_5);
+        const aqi = calculateAQI(data);
         const color = getPollutionColor(aqi);
         
         const markerOptions = {
@@ -575,16 +672,9 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
             fillOpacity: 0.9
         };
         
-        L.circleMarker([lat, lon], markerOptions)
-        .bindPopup(`
-            <strong>${sensorId}</strong> <em>(${sensorType})</em><br>
-            <small>${timestamp}</small><br>
-            <hr style="margin: 5px 0;">
-            PM10: ${formatValue(pm10)} ug/m3<br>
-            PM2.5: ${formatValue(pm2_5)} ug/m3<br>
-            <strong>AQI: ${aqi.toFixed(0)}</strong>
-        `)
-        .addTo(pollutionLayer);
+        L.circleMarker([data.latitude, data.longitude], markerOptions)
+            .bindPopup(buildSensorPopup(data))
+            .addTo(pollutionLayer);
     });
     
     if (readings.length > 0) {

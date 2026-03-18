@@ -95,7 +95,7 @@ class RoutePayload(BaseModel):
     
     Required: start, goal (each with lat, lon)
     Optional: sensor_types (default: mobile), alpha (default: 1 = cleanest),
-      transport_mode (default: car)
+      transport_mode (default: bicycle)
     """
     start: dict = Field(..., description="Start point: {lat, lon}")
     goal: dict = Field(..., description="Goal point: {lat, lon}")
@@ -104,7 +104,7 @@ class RoutePayload(BaseModel):
         default=["mobile"],
         description="Filter by sensor type: 'fixed', 'mobile', 'predicted'"
     )
-    transport_mode: str = Field(default="car", description="'foot' or 'car'")
+    transport_mode: str = Field(default="bicycle", description="'foot' or 'bicycle'")
 
 
 # Helper functions

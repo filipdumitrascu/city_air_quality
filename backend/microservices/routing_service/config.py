@@ -31,4 +31,5 @@ def get_config() -> Dict:
         "waypoint_sample_distance_m": int(os.getenv("WAYPOINT_SAMPLE_DISTANCE", 200)),
     }
 
-ROUTING_POLLUTANTS = ["pm10", "pm2_5"]
+
+ROUTING_POLLUTANTS = ["pm10", "pm2_5", "pm1_0", "no2", "co", "co2", "nh3", "vocs"]
