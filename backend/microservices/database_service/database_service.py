@@ -36,7 +36,7 @@ AVAILABLE_LAYERS = [
 ]
 
 
-# Helper Functions
+# HELPER FUNCTIONS
 def generate_cache_key(latitude: float, longitude: float, radius: float, 
                        layers: List[str], sensor_types: List[str] = None) -> str:
     """Generate unique cache key for query."""
@@ -63,7 +63,7 @@ def get_coordinate_deltas(radius_km: float, latitude_deg: float):
     return delta_lat, delta_lng
 
 
-# Fast API
+# FASTAPI APPLICATION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database connection pool on startup."""
@@ -132,11 +132,14 @@ async def add_data(payload: InsertPollutionDataRequest):
     pollution metrics and weather data.
     """
     try:
+        # Convert timestamp from milliseconds to microseconds for QuestDB
+        timestamp_us = payload.timestamp * 1000
+        
         # Build params tuple matching pollution_data schema
         params = (
             payload.sensor_id,
             payload.sensor_type,
-            payload.timestamp,
+            timestamp_us,
             payload.latitude,
             payload.longitude,
             payload.altitude,

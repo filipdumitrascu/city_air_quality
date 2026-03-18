@@ -1,16 +1,3 @@
-"""
-Ingest Service - Sensor Data Processor for CityAirQ
-
-Receives sensor data from Client Message Handler via PubSub,
-processes timestamps, and forwards to Database Service for storage.
-
-Flow:
-1. Client Message Handler publishes to 'ingest_service_messages'
-2. This service receives and processes the data
-3. Converts timestamp to QuestDB-compatible format
-4. Forwards to Database Service for storage in pollution_data table
-"""
-
 import json
 import logging
 import asyncio
@@ -70,14 +57,13 @@ async def process_message(message):
         sensor_id = data.get("sensor_id", "unknown")
         logging.info(f"Processing data from sensor: {sensor_id}")
 
-        # Convert Unix timestamp (ms) to ISO 8601 format for QuestDB
-        timestamp_ms = data.get("timestamp", 0)
-        if isinstance(timestamp_ms, int) and timestamp_ms >= 0:
-            # Convert milliseconds to datetime
-            dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
-            data["timestamp"] = dt.isoformat()
+        # Validate timestamp is a valid Unix ms integer
+        timestamp_ms = data.get("timestamp")
+        if not isinstance(timestamp_ms, int) or timestamp_ms < 0:
+            logging.error(f"Invalid timestamp for sensor {sensor_id}: {timestamp_ms}")
+            return
         
-        # Forward to Database Service
+        # Forward to Database Service (timestamp stays as Unix ms int)
         response = await send_data_to_database(data)
         
         if response.get("success"):
