@@ -39,11 +39,11 @@ AVAILABLE_LAYERS = [
 # Helper functions
 def generate_cache_key(query_params: dict) -> str:
     """ Generate unique cache key from query parameters. """
-    sensor_types = query_params.get('sensor_types', ['fixed', 'mobile'])
+    sensor_types = query_params.get('sensor_types', ['SPO-RO', 'CityAirQ', 'WearAware'])
     if sensor_types:
         sensor_types = sorted(sensor_types)
     else:
-        sensor_types = ['fixed', 'mobile']
+        sensor_types = ['SPO-RO', 'CityAirQ', 'WearAware']
     
     layers = query_params.get('layers') or []
     
@@ -92,7 +92,7 @@ async def process_message(message):
         # Handle sensor_types - default to mobile if not specified
         sensor_types = decoded_message.get("sensor_types")
         if not sensor_types:
-            sensor_types = ["mobile"]
+            sensor_types = ["CityAirQ", "WearAware"]
         decoded_message["sensor_types"] = sensor_types
 
         # Redis cache check

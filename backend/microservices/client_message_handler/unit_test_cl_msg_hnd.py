@@ -22,8 +22,8 @@ from httpx import AsyncClient
 # TEST DATA (matching pollution_data schema)
 # Valid ingest payload - all fields
 valid_ingest_payload_full = {
-    "sensor_id": "CityAirQ_001",
-    "sensor_type": "mobile",
+    "sensor_type": "CityAirQ",
+    "sensor_id": "001",
     "timestamp": 1718699260000,
     "latitude": 44.4268,
     "longitude": 26.1025,
@@ -43,8 +43,8 @@ valid_ingest_payload_full = {
 
 # Valid ingest payload - only required fields (optional default to -1)
 valid_ingest_payload_minimal = {
-    "sensor_id": "WearAware_005",
-    "sensor_type": "mobile",
+    "sensor_type": "WearAware",
+    "sensor_id": "005",
     "timestamp": 1718699260000,
     "latitude": 44.4268,
     "longitude": 26.1025
@@ -52,11 +52,10 @@ valid_ingest_payload_minimal = {
 
 # Invalid ingest payload - missing required field
 invalid_ingest_payload = {
-    "sensor_type": "mobile",
     "timestamp": 1718699260000,
     "latitude": 44.4268,
     "longitude": 26.1025
-    # missing sensor_id
+    # missing sensor_type
 }
 
 # Valid results payload
@@ -64,7 +63,7 @@ valid_results_payload = {
     "latitude": 44.4268,
     "longitude": 26.1025,
     "radius": 5.0,
-    "sensor_types": ["mobile"],
+    "sensor_types": ["CityAirQ", "WearAware"],
     "layers": ["pm10", "pm2_5", "no2"]
 }
 
@@ -80,15 +79,15 @@ valid_route_payload = {
     "start": {"lat": 44.4268, "lon": 26.1025},
     "goal": {"lat": 44.4368, "lon": 26.0925},
     "alpha": 1.0,
-    "sensor_types": ["mobile"],
+    "sensor_types": ["CityAirQ", "WearAware"],
     "transport_mode": "car"
 }
 
 # Mock response from Data Provider Service
 mock_results_response = [
     {
-        "sensor_id": "CityAirQ_001",
-        "sensor_type": "mobile",
+        "sensor_type": "CityAirQ",
+        "sensor_id": "001",
         "timestamp": "2026-03-15T10:00:00",
         "latitude": 44.4268,
         "longitude": 26.1025,
@@ -277,7 +276,7 @@ async def test_route_with_sensor_types(mock_post):
     payload_with_sensors = {
         "start": {"lat": 44.4268, "lon": 26.1025},
         "goal": {"lat": 44.4368, "lon": 26.0925},
-        "sensor_types": ["fixed", "mobile"]
+        "sensor_types": ["SPO-RO", "CityAirQ", "WearAware"]
     }
     
     async with AsyncClient(app=app, base_url="http://test") as ac:

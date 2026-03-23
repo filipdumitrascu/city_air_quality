@@ -1,17 +1,21 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 
 class InsertPollutionDataRequest(BaseModel):
     """
     Request model for inserting sensor data.
     
-    Required: sensor_id, sensor_type, timestamp, latitude, longitude
-    Optional: All other fields default to -1 (no data)
+    Required: sensor_type, timestamp, latitude, longitude
+    Optional: sensor_id (None for Forecast), all pollutant fields default to -1
     """
     # Required fields
-    sensor_id: str = Field(..., min_length=1, description="Sensor identifier (e.g., 'CityAirQ_001')")
-    sensor_type: str = Field(..., description="Sensor type: 'fixed', 'mobile', 'predicted'")
+    sensor_type: Literal["CityAirQ", "WearAware", "SPO-RO", "Forecast"] = Field(
+        ..., description="Sensor type: CityAirQ, WearAware, SPO-RO, or Forecast"
+    )
+    sensor_id: Optional[str] = Field(
+        default=None, description="Sensor identifier (e.g., '001'). None for Forecast."
+    )
     timestamp: int = Field(..., description="Unix timestamp in milliseconds")
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
@@ -38,13 +42,14 @@ class InsertPollutionDataRequest(BaseModel):
 class InsertPollutionDataResponse(BaseModel):
     """Response model for successful insertion."""
     success: bool
-    sensor_id: str
+    sensor_type: str
+    sensor_id: Optional[str] = None
 
 
 class SensorReading(BaseModel):
     """Model for a single sensor reading."""
-    sensor_id: str
     sensor_type: str
+    sensor_id: Optional[str] = None
     timestamp: str
     latitude: float
     longitude: float

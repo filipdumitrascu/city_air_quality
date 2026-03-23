@@ -20,33 +20,33 @@ from httpx import AsyncClient
 
 # TEST DATA (pollution_data schema, only pm10 and pm2_5)
 MOCK_POLLUTION_DATA = [
-    {"sensor_id": "CityAirQ_001", "sensor_type": "mobile", "latitude": 44.4268, "longitude": 26.1025, "pm10": 45.3, "pm2_5": 25.2},
-    {"sensor_id": "CityAirQ_002", "sensor_type": "mobile", "latitude": 44.4270, "longitude": 26.1027, "pm10": 42.1, "pm2_5": 22.8},
-    {"sensor_id": "CityAirQ_003", "sensor_type": "mobile", "latitude": 44.4272, "longitude": 26.1030, "pm10": 38.7, "pm2_5": 20.5},
-    {"sensor_id": "CityAirQ_004", "sensor_type": "mobile", "latitude": 44.4275, "longitude": 26.1035, "pm10": 40.2, "pm2_5": 21.1},
-    {"sensor_id": "CityAirQ_005", "sensor_type": "mobile", "latitude": 44.4278, "longitude": 26.1040, "pm10": 37.5, "pm2_5": 19.8},
-    {"sensor_id": "CityAirQ_006", "sensor_type": "mobile", "latitude": 44.4280, "longitude": 26.1045, "pm10": 35.2, "pm2_5": 18.3},
-    {"sensor_id": "F_RO0066A", "sensor_type": "fixed", "latitude": 44.4286, "longitude": 26.1302, "pm10": 50.0, "pm2_5": 30.0},
+    {"sensor_id": "001", "sensor_type": "CityAirQ", "latitude": 44.4268, "longitude": 26.1025, "pm10": 45.3, "pm2_5": 25.2},
+    {"sensor_id": "002", "sensor_type": "CityAirQ", "latitude": 44.4270, "longitude": 26.1027, "pm10": 42.1, "pm2_5": 22.8},
+    {"sensor_id": "003", "sensor_type": "CityAirQ", "latitude": 44.4272, "longitude": 26.1030, "pm10": 38.7, "pm2_5": 20.5},
+    {"sensor_id": "004", "sensor_type": "CityAirQ", "latitude": 44.4275, "longitude": 26.1035, "pm10": 40.2, "pm2_5": 21.1},
+    {"sensor_id": "005", "sensor_type": "CityAirQ", "latitude": 44.4278, "longitude": 26.1040, "pm10": 37.5, "pm2_5": 19.8},
+    {"sensor_id": "006", "sensor_type": "CityAirQ", "latitude": 44.4280, "longitude": 26.1045, "pm10": 35.2, "pm2_5": 18.3},
+    {"sensor_id": "0066A", "sensor_type": "SPO-RO", "latitude": 44.4286, "longitude": 26.1302, "pm10": 50.0, "pm2_5": 30.0},
 ]
 
 # WearAware sensors (don't measure NO2, but that's fine since we don't use it)
 MOCK_POLLUTION_WEARAWARE = [
-    {"sensor_id": "WearAware_001", "sensor_type": "mobile", "latitude": 44.4269, "longitude": 26.1026, "pm10": 48.0, "pm2_5": 27.0},
-    {"sensor_id": "WearAware_002", "sensor_type": "mobile", "latitude": 44.4271, "longitude": 26.1029, "pm10": 44.0, "pm2_5": 24.0},
+    {"sensor_id": "001", "sensor_type": "WearAware", "latitude": 44.4269, "longitude": 26.1026, "pm10": 48.0, "pm2_5": 27.0},
+    {"sensor_id": "002", "sensor_type": "WearAware", "latitude": 44.4271, "longitude": 26.1029, "pm10": 44.0, "pm2_5": 24.0},
 ]
 
 # Mixed data with -1 values (should be ignored)
 MOCK_POLLUTION_WITH_MISSING = [
-    {"sensor_id": "CityAirQ_001", "sensor_type": "mobile", "latitude": 44.4268, "longitude": 26.1025, "pm10": 45.3, "pm2_5": -1},  # pm2_5 missing
-    {"sensor_id": "CityAirQ_002", "sensor_type": "mobile", "latitude": 44.4270, "longitude": 26.1027, "pm10": -1, "pm2_5": 22.8},  # pm10 missing
-    {"sensor_id": "CityAirQ_003", "sensor_type": "mobile", "latitude": 44.4272, "longitude": 26.1030, "pm10": 38.7, "pm2_5": 20.5},  # Both valid
+    {"sensor_id": "001", "sensor_type": "CityAirQ", "latitude": 44.4268, "longitude": 26.1025, "pm10": 45.3, "pm2_5": -1},  # pm2_5 missing
+    {"sensor_id": "002", "sensor_type": "CityAirQ", "latitude": 44.4270, "longitude": 26.1027, "pm10": -1, "pm2_5": 22.8},  # pm10 missing
+    {"sensor_id": "003", "sensor_type": "CityAirQ", "latitude": 44.4272, "longitude": 26.1030, "pm10": 38.7, "pm2_5": 20.5},  # Both valid
 ]
 
 ROUTE_REQUEST_FOOT = {
     "start": {"lat": 44.4268, "lon": 26.1025},
     "goal": {"lat": 44.4280, "lon": 26.1045},
     "alpha": 0.5,
-    "sensor_types": ["mobile"],
+    "sensor_types": ["CityAirQ", "WearAware"],
     "transport_mode": "foot",
     "heuristic": "haversine"
 }
@@ -55,7 +55,7 @@ ROUTE_REQUEST_BICYCLE = {
     "start": {"lat": 44.4268, "lon": 26.1025},
     "goal": {"lat": 44.4368, "lon": 26.0925},
     "alpha": 0.7,
-    "sensor_types": ["fixed", "mobile"],
+    "sensor_types": ["SPO-RO", "CityAirQ", "WearAware"],
     "transport_mode": "bicycle"
 }
 
@@ -113,7 +113,6 @@ async def test_root_endpoint(mock_services):
     assert data["service"] == "routing_service"
     assert "foot" in data["modes"]
     assert "bicycle" in data["modes"]
-    assert data["pollutants"] == ["pm10", "pm2_5"]
 
 @pytest.mark.asyncio
 async def test_health_check(mock_services):

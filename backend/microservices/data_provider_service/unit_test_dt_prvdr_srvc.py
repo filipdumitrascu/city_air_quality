@@ -43,7 +43,7 @@ valid_query_payload = {
     "latitude": 44.4268,
     "longitude": 26.1025,
     "radius": 5.0,
-    "sensor_types": ["mobile"],
+    "sensor_types": ["CityAirQ", "WearAware"],
     "layers": ["pm10", "pm2_5", "no2"]
 }
 
@@ -55,8 +55,8 @@ valid_query_payload_minimal = {
 
 mock_database_response = [
     {
-        "sensor_id": "CityAirQ_001",
-        "sensor_type": "mobile",
+        "sensor_type": "CityAirQ",
+        "sensor_id": "001",
         "timestamp": "2026-03-15T10:00:00",
         "latitude": 44.4268,
         "longitude": 26.1025,
@@ -65,8 +65,8 @@ mock_database_response = [
         "no2": 35.2
     },
     {
-        "sensor_id": "CityAirQ_002",
-        "sensor_type": "mobile",
+        "sensor_type": "CityAirQ",
+        "sensor_id": "002",
         "timestamp": "2026-03-15T10:05:00",
         "latitude": 44.4275,
         "longitude": 26.1030,
@@ -190,7 +190,7 @@ async def test_process_message_with_default_sensor_types(mock_publish, mock_get_
     
     # Check that get_data_from_database was called with default sensor_types
     call_args = mock_get_data.call_args[0][0]
-    assert call_args["sensor_types"] == ["mobile"]
+    assert call_args["sensor_types"] == ["CityAirQ", "WearAware"]
 
 @pytest.mark.asyncio
 @patch("data_provider_service.redis_client")
@@ -205,7 +205,7 @@ async def test_process_message_with_fixed_sensors(mock_publish, mock_get_data, m
         "latitude": 44.4268,
         "longitude": 26.1025,
         "radius": 5.0,
-        "sensor_types": ["fixed"],
+        "sensor_types": ["SPO-RO"],
         "layers": ["pm10", "no2"]
     }
 
@@ -213,7 +213,7 @@ async def test_process_message_with_fixed_sensors(mock_publish, mock_get_data, m
     await process_message(message)
 
     call_args = mock_get_data.call_args[0][0]
-    assert call_args["sensor_types"] == ["fixed"]
+    assert call_args["sensor_types"] == ["SPO-RO"]
 
 @pytest.mark.asyncio
 @patch("data_provider_service.redis_client")

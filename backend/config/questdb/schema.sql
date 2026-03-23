@@ -4,11 +4,13 @@
 DROP TABLE IF EXISTS pollution_data;
 
 -- sensors:
--- CityAirQ: bme680, mhz19, mics, pm
--- WearAware: bmv080, stcc4
+-- SPO-RO                             (fixed)
+-- CityAirQ: bme680, mhz19, mics, pm  (mobile)
+-- WearAware: bmv080, stcc4           (mobile)
+-- Forecast                           (predicted)
 CREATE TABLE IF NOT EXISTS pollution_data (
-    sensor_id SYMBOL,              -- (CityAirQ | WearAware)_number
-    sensor_type SYMBOL,            -- fixed, mobile, predicted
+    sensor_type SYMBOL,            -- CityAirQ | WearAware | SPO-RO | Forecast
+    sensor_id SYMBOL,              -- unique sensor identifier
     timestamp TIMESTAMP,
     latitude DOUBLE,
     longitude DOUBLE,

@@ -63,7 +63,7 @@ def insert_data(params):
     
     Args:
         params: Tuple with 17 values matching schema:
-            (sensor_id, sensor_type, timestamp, latitude, longitude, altitude,
+            (sensor_type, sensor_id, timestamp, latitude, longitude, altitude,
              humidity, pressure, temperature, co, co2, no2, nh3,
              pm1_0, pm2_5, pm10, vocs)
     """
@@ -71,7 +71,7 @@ def insert_data(params):
     try:
         query = """
             INSERT INTO pollution_data 
-            (sensor_id, sensor_type, timestamp, latitude, longitude, altitude,
+            (sensor_type, sensor_id, timestamp, latitude, longitude, altitude,
              humidity, pressure, temperature, co, co2, no2, nh3,
              pm1_0, pm2_5, pm10, vocs)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -81,7 +81,7 @@ def insert_data(params):
         cursor.execute(query, params)
         conn.commit()
         cursor.close()
-        logging.info(f"Inserted data for sensor {params[0]}")
+        logging.info(f"Inserted data for {params[0]}/{params[1]}")
     except Exception as e:
         if conn:
             conn.rollback()
@@ -91,14 +91,15 @@ def insert_data(params):
         if conn:
             release_db_connection(conn)
 
+
 def fetch_data(params):
     """
     Fetch pollution data within geographic bounds.
     
     Returns only the LATEST reading per unique location (rounded to 4 decimals).
     This means:
-    - Fixed sensors: 1 reading per station (latest)
-    - Mobile sensors: 1 reading per unique GPS position (latest)
+    - Fixed sensors (SPO-RO): 1 reading per station (latest)
+    - Mobile sensors (CityAirQ, WearAware): 1 reading per unique GPS position (latest)
     
     Args:
         params: Tuple containing:
@@ -123,10 +124,10 @@ def fetch_data(params):
         delta_lat = params[2]
         longitude = params[3]
         delta_lng = params[4]
-        sensor_types = params[5] if len(params) > 5 else ['mobile']
+        sensor_types = params[5] if len(params) > 5 else ['CityAirQ', 'WearAware']
         
         # Build column list - always include base columns
-        base_columns = ['sensor_id', 'sensor_type', 'timestamp', 'latitude', 'longitude']
+        base_columns = ['sensor_type', 'sensor_id', 'timestamp', 'latitude', 'longitude']
         
         # Add requested layers (validate against schema)
         valid_layers = ['pm10', 'pm2_5', 'pm1_0', 'no2', 'co', 'co2', 'nh3', 'vocs',

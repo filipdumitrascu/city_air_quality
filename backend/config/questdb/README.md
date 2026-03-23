@@ -187,13 +187,13 @@ postgresql://admin:quest@localhost:8812/qdb
 
 | Sensor ID | Location | Lat | Lon | Measures |
 |-----------|----------|-----|-----|----------|
-| F_RO0065A | Cercetari | 44.4419 | 26.0294 | NO2, CO |
-| F_RO0066A | Mihai Bravu | 44.4286 | 26.1302 | PM10, NO2, CO |
-| F_RO0067A | Drumul Taberei | 44.4244 | 26.0331 | PM10, NO2, CO |
-| F_RO0068A | Lacul Morii | 44.4489 | 26.0256 | PM10, NO2 |
-| F_RO0069A | Titan | 44.4106 | 26.1456 | PM10, NO2, CO |
-| F_RO0070A | Militari | 44.4350 | 26.0006 | PM10, NO2, CO |
-| F_RO0229A | Obor | 44.4500 | 26.1200 | PM10, PM2.5, NO2 |
+| RO0065A | Cercetari | 44.4419 | 26.0294 | NO2, CO |
+| RO0066A | Mihai Bravu | 44.4286 | 26.1302 | PM10, NO2, CO |
+| RO0067A | Drumul Taberei | 44.4244 | 26.0331 | PM10, NO2, CO |
+| RO0068A | Lacul Morii | 44.4489 | 26.0256 | PM10, NO2 |
+| RO0069A | Titan | 44.4106 | 26.1456 | PM10, NO2, CO |
+| RO0070A | Militari | 44.4350 | 26.0006 | PM10, NO2, CO |
+| RO0229A | Obor | 44.4500 | 26.1200 | PM10, PM2.5, NO2 |
 
 ## Troubleshooting
 

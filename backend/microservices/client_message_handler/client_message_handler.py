@@ -1,8 +1,8 @@
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
 import logging
 import os
@@ -40,30 +40,40 @@ class IngestPayload(BaseModel):
     """
     Payload for ingesting sensor data into pollution_data table.
     
-    Required fields: sensor_id, sensor_type, timestamp, latitude, longitude
-    Optional fields default to -1 if not provided.
+    sensor_type values:
+      - CityAirQ   (mobile)
+      - WearAware  (mobile)
+      - SPO-RO     (fixed, EEA stations)
+      - Forecast   (predicted, ML)
+    
+    Required: sensor_type, timestamp, latitude, longitude
+    Optional: sensor_id (None for Forecast)
     """
     # Required fields
-    sensor_id: str = Field(..., description="Sensor identifier (e.g., 'CityAirQ_001', 'WearAware_005')")
-    sensor_type: str = Field(..., description="Sensor type: 'fixed', 'mobile', 'predicted'")
+    sensor_type: Literal["CityAirQ", "WearAware", "SPO-RO", "Forecast"] = Field(
+        ..., description="Sensor type: CityAirQ, WearAware, SPO-RO, or Forecast"
+    )
+    sensor_id: Optional[str] = Field(
+        default=None, description="Sensor identifier (e.g., '001'). None for Forecast."
+    )
     timestamp: int = Field(..., description="Unix timestamp in milliseconds")
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     
-    # Weather data (BME680 sensor)
+    # Optional - Weather data (BME680 sensor)
     altitude: Optional[float] = Field(default=-1, description="Altitude in meters")
     humidity: Optional[float] = Field(default=-1, description="Relative humidity %")
     pressure: Optional[float] = Field(default=-1, description="Atmospheric pressure hPa")
     temperature: Optional[float] = Field(default=-1, description="Temperature in Celsius")
     
-    # Gas sensors
+    # Optional - Gas sensors
     co: Optional[float] = Field(default=-1, description="Carbon monoxide (MICS sensor)")
     co2: Optional[float] = Field(default=-1, description="Carbon dioxide (MHZ19/STCC44)")
     no2: Optional[float] = Field(default=-1, description="Nitrogen dioxide (MICS sensor)")
     nh3: Optional[float] = Field(default=-1, description="Ammonia (MICS sensor)")
     vocs: Optional[float] = Field(default=-1, description="Volatile organic compounds (BME680)")
     
-    # Particulate matter (PM sensor / BMV080)
+    # Optional - Particulate matter (PM sensor / BMV080)
     pm1_0: Optional[float] = Field(default=-1, description="PM1.0 concentration ug/m3")
     pm2_5: Optional[float] = Field(default=-1, description="PM2.5 concentration ug/m3")
     pm10: Optional[float] = Field(default=-1, description="PM10 concentration ug/m3")
@@ -80,8 +90,8 @@ class ResultsPayload(BaseModel):
     longitude: float = Field(..., ge=-180, le=180)
     radius: float = Field(..., gt=0, description="Search radius in km")
     sensor_types: Optional[List[str]] = Field(
-        default=["mobile"],
-        description="Filter by sensor type: 'fixed', 'mobile', 'predicted'"
+        default=["CityAirQ", "WearAware"],
+        description="'CityAirQ', 'WearAware', 'SPO-RO', 'Forecast'"
     )
     layers: Optional[List[str]] = Field(
         default=None,
@@ -94,30 +104,30 @@ class RoutePayload(BaseModel):
     Payload for route calculation.
     
     Required: start, goal (each with lat, lon)
-    Optional: sensor_types (default: mobile), alpha (default: 1 = cleanest),
-      transport_mode (default: bicycle)
+    Optional: alpha (default: 1 = cleanest), transport_mode (default: bicycle)
     """
     start: dict = Field(..., description="Start point: {lat, lon}")
     goal: dict = Field(..., description="Goal point: {lat, lon}")
     alpha: float = Field(default=1, ge=0, le=1, description="0=shortest, 1=cleanest")
     sensor_types: Optional[List[str]] = Field(
-        default=["mobile"],
-        description="Filter by sensor type: 'fixed', 'mobile', 'predicted'"
+        default=["CityAirQ", "WearAware", "SPO-RO", "Forecast"],
+        description="'CityAirQ', 'WearAware', 'SPO-RO' or Forecast"
     )
     transport_mode: str = Field(default="bicycle", description="'foot' or 'bicycle'")
+    heuristic: str = Field(default="haversine", description="A* heuristic for foot mode")
 
 
-# Helper functions
+# HELPER FUNCTIONS
 def generate_cache_key(payload: dict) -> str:
     """Generate unique cache key from query payload."""
-    sensor_types = payload.get('sensor_types', ['fixed', 'mobile'])
+    sensor_types = payload.get('sensor_types', ['CityAirQ', 'WearAware', 'SPO-RO', 'Forecast'])
     if sensor_types:
         sensor_types = sorted(sensor_types)
     else:
-        sensor_types = ['fixed', 'mobile']
+        sensor_types = ['CityAirQ', 'WearAware', 'SPO-RO', 'Forecast']
     
     layers = payload.get('layers') or []
-
+    
     key_data = json.dumps({
         'latitude': round(payload.get('latitude', 0), 4),
         'longitude': round(payload.get('longitude', 0), 4),
@@ -147,7 +157,7 @@ async def process_results_message(message):
 results_subscriber = PubSubClientSubscriber("results_response_messages-sub", process_results_message)
 
 
-# Fast API
+# FASTAPI APPLICATION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - start subscriber on startup."""
@@ -179,7 +189,6 @@ Instrumentator().instrument(app).expose(app)
 # HEALTH ENDPOINTS
 @app.get("/")
 async def root():
-    """Root endpoint - service info."""
     return {
         "service": "client_message_handler",
         "version": "2.0.0",
@@ -188,7 +197,6 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check for Kubernetes probes."""
     redis_ok = False
     try:
         redis_ok = redis_client.ping()
@@ -211,21 +219,21 @@ async def ingest_data(
     """
     Ingest sensor data into the database.
     
-    Accepts data from CityAirQ and WearAware sensors.
-    Authentication: REQUIRED (Google OAuth)
+    Accepts data from CityAirQ, WearAware, SPO-RO, and Forecast sensors.
+    Authentication: REQUIRED (Google OAuth or API key)
     """
     try:
         data = payload.model_dump()
         data['submitted_by'] = user.get('email')
-
+        
         PubSubClientPublisher.publish_message("ingest_service_messages", data)
-        logging.info(f"Ingest from {user.get('email')} for sensor {payload.sensor_id}")
+        logging.info(f"Ingest from {user.get('email')} for {payload.sensor_type}/{payload.sensor_id}")
 
         return JSONResponse(
             status_code=200,
             content={
-                "success": True,
                 "message": "Data accepted for processing",
+                "sensor_type": payload.sensor_type,
                 "sensor_id": payload.sensor_id
             }
         )
@@ -265,7 +273,6 @@ async def get_results(payload: ResultsPayload):
         PubSubClientPublisher.publish_message("results_service_messages", query)
         logging.info("Results query published, waiting for response...")
         
-        # Poll response queue (30 second timeout)
         start_time = time.time()
         while response_queue.empty():
             if time.time() - start_time > 30:
@@ -277,13 +284,11 @@ async def get_results(payload: ResultsPayload):
         
         response_data = response_queue.get_nowait()
         
-        # Handle error response
         if "error" in response_data:
             error_msg = response_data.get("error", "Unknown error")
             logging.error(f"Data Provider error: {error_msg}")
             raise HTTPException(status_code=500, detail=str(error_msg))
         
-        # Parse response if string
         if isinstance(response_data, str):
             response_data = json.loads(response_data)
         
@@ -348,7 +353,6 @@ async def calculate_route(payload: RoutePayload):
 # CACHE MANAGEMENT ENDPOINTS
 @app.get("/cache/stats")
 async def cache_stats():
-    """Get Redis cache statistics."""
     try:
         info = redis_client.info("stats")
         client_keys = len(redis_client.keys("client_query:*"))
@@ -370,7 +374,6 @@ async def cache_stats():
 
 @app.delete("/cache/clear")
 async def clear_cache():
-    """Clear all cached queries."""
     try:
         keys = redis_client.keys("client_query:*")
         if keys:

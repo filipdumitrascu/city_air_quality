@@ -1,3 +1,7 @@
+"""
+Pydantic models for Routing Service
+"""
+
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 
@@ -18,16 +22,16 @@ class RouteRequest(BaseModel):
         le=1.0,
         description="Pollution weight: 0=fastest, 1=cleanest"
     )
-    sensor_types: List[Literal["fixed", "mobile"]] = Field(
-        default=["fixed", "mobile"],
-        description="Sensor types to use for pollution data"
+    sensor_types: List[Literal["CityAirQ", "WearAware", "SPO-RO", "Forecast"]] = Field(
+        default=["CityAirQ", "WearAware", "SPO-RO", "Forecast"],
+        description="Sensor types: 'CityAirQ', 'WearAware', 'SPO-RO', 'Forecast'"
     )
     heuristic: Literal["haversine", "euclidean", "manhattan", "diagonal", "octile"] = Field(
         default="haversine",
         description="A* heuristic (foot mode only)"
     )
     transport_mode: Literal["foot", "bicycle"] = Field(
-        default="foot",
+        default="bicycle",
         description="'foot' = A* on pollution grid, 'bicycle' = Google Routes API"
     )
 

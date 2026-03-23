@@ -120,13 +120,13 @@ else
 fi
 
 # Import sample data (Mobile sensors)
-EXCEL_FILE_MOBILE="../backend/config/questdb/xlsxs/mobile_sensors_2026.xlsx"
-if [ -f "$EXCEL_FILE_MOBILE" ]; then
-    echo -n "Importing mobile sensors data..."
-    python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_MOBILE" 2>/dev/null && echo " done" || echo " skipped"
-else
-    echo "Warning: Mobile sensors Excel file not found - skipping"
-fi
+# EXCEL_FILE_MOBILE="../backend/config/questdb/xlsxs/mobile_sensors_2026.xlsx"
+# if [ -f "$EXCEL_FILE_MOBILE" ]; then
+#     echo -n "Importing mobile sensors data..."
+#     python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_MOBILE" 2>/dev/null && echo " done" || echo " skipped"
+# else
+#     echo "Warning: Mobile sensors Excel file not found - skipping"
+# fi
 
 # Kill port-forward
 kill $PF_PID 2>/dev/null || true

@@ -27,8 +27,8 @@ from db import insert_data, fetch_data
 
 # TEST DATA (matching pollution_data schema)
 valid_insert_payload_full = {
-    "sensor_id": "CityAirQ_001",
-    "sensor_type": "mobile",
+    "sensor_type": "CityAirQ",
+    "sensor_id": "001",
     "timestamp": 1718699260000,
     "latitude": 44.4268,
     "longitude": 26.1025,
@@ -47,8 +47,8 @@ valid_insert_payload_full = {
 }
 
 valid_insert_payload_minimal = {
-    "sensor_id": "WearAware_005",
-    "sensor_type": "mobile",
+    "sensor_type": "WearAware",
+    "sensor_id": "005",
     "timestamp": 1718699260000,
     "latitude": 44.4268,
     "longitude": 26.1025
@@ -57,8 +57,8 @@ valid_insert_payload_minimal = {
 
 mock_fetch_response = [
     {
-        "sensor_id": "CityAirQ_001",
-        "sensor_type": "mobile",
+        "sensor_type": "CityAirQ",
+        "sensor_id": "001",
         "timestamp": "2026-03-15T10:00:00",
         "latitude": 44.4268,
         "longitude": 26.1025,
@@ -67,8 +67,8 @@ mock_fetch_response = [
         "no2": 35.2
     },
     {
-        "sensor_id": "CityAirQ_002",
-        "sensor_type": "mobile",
+        "sensor_type": "CityAirQ",
+        "sensor_id": "002",
         "timestamp": "2026-03-15T10:05:00",
         "latitude": 44.4275,
         "longitude": 26.1030,
@@ -118,14 +118,14 @@ async def test_add_data_success_full(mock_insert):
     
     assert response.status_code == 200
     assert response.json()["success"] == True
-    assert response.json()["sensor_id"] == "CityAirQ_001"
+    assert response.json()["sensor_id"] == "001"
     mock_insert.assert_called_once()
     
     # Verify all 17 params passed correctly
     call_args = mock_insert.call_args[0][0]
     assert len(call_args) == 17
-    assert call_args[0] == "CityAirQ_001"  # sensor_id
-    assert call_args[1] == "mobile"  # sensor_type
+    assert call_args[0] == "CityAirQ"  # sensor_type
+    assert call_args[1] == "001"  # sensor_id
     assert call_args[15] == 42.7  # pm10
 
 
@@ -151,11 +151,10 @@ async def test_add_data_success_minimal(mock_insert):
 async def test_add_data_missing_required():
     """Test /add_data/ with missing required field - should return 422"""
     invalid_payload = {
-        "sensor_type": "mobile",
         "timestamp": 1718699260000,
         "latitude": 44.4268,
         "longitude": 26.1025
-        # Missing sensor_id
+        # Missing sensor_type
     }
     
     transport = ASGITransport(app=app)
@@ -194,7 +193,7 @@ async def test_get_data_success(mock_fetch, mock_redis):
         "longitude": 26.1025,
         "radius": 5.0,
         "layers": ["pm10", "pm2_5", "no2"],
-        "sensor_types": ["mobile"]
+        "sensor_types": ["CityAirQ", "WearAware"]
     }
     
     transport = ASGITransport(app=app)
@@ -205,7 +204,7 @@ async def test_get_data_success(mock_fetch, mock_redis):
     data = response.json()
     assert isinstance(data, list)
     assert len(data) == 2
-    assert data[0]["sensor_id"] == "CityAirQ_001"
+    assert data[0]["sensor_id"] == "001"
 
 @pytest.mark.asyncio
 @patch("database_service.redis_client")
@@ -274,7 +273,7 @@ async def test_get_data_default_sensor_types(mock_fetch, mock_redis):
     assert response.status_code == 200
     
     call_args = mock_fetch.call_args[0][0]
-    assert call_args[5] == ["mobile"]
+    assert call_args[5] == ["CityAirQ", "WearAware"]
 
 @pytest.mark.asyncio
 @patch("database_service.redis_client")
@@ -288,7 +287,7 @@ async def test_get_data_fixed_sensors(mock_fetch, mock_redis):
         "latitude": 44.4268,
         "longitude": 26.1025,
         "radius": 5.0,
-        "sensor_types": ["fixed"]
+        "sensor_types": ["SPO-RO"]
     }
     
     transport = ASGITransport(app=app)
@@ -298,7 +297,7 @@ async def test_get_data_fixed_sensors(mock_fetch, mock_redis):
     assert response.status_code == 200
     
     call_args = mock_fetch.call_args[0][0]
-    assert call_args[5] == ["fixed"]
+    assert call_args[5] == ["SPO-RO"]
 
 @pytest.mark.asyncio
 @patch("database_service.redis_client")

@@ -40,7 +40,7 @@ AVAILABLE_LAYERS = [
 def generate_cache_key(latitude: float, longitude: float, radius: float, 
                        layers: List[str], sensor_types: List[str] = None) -> str:
     """Generate unique cache key for query."""
-    sensor_types_sorted = sorted(sensor_types) if sensor_types else ['fixed', 'mobile']
+    sensor_types_sorted = sorted(sensor_types) if sensor_types else ['SPO-RO', 'CityAirQ', 'WearAware']
     layers_sorted = sorted(layers) if layers else 'all'
     
     key_data = json.dumps({
@@ -128,17 +128,17 @@ async def add_data(payload: InsertPollutionDataRequest):
     """
     Insert sensor data into pollution_data table.
     
-    Accepts data from CityAirQ and WearAware sensors with all
-    pollution metrics and weather data.
+    Accepts data from CityAirQ, WearAware, SPO-RO, and Forecast sensors.
     """
     try:
         # Convert timestamp from milliseconds to microseconds for QuestDB
         timestamp_us = payload.timestamp * 1000
         
         # Build params tuple matching pollution_data schema
+        # Order: sensor_type, sensor_id, timestamp, latitude, longitude, ...
         params = (
-            payload.sensor_id,
             payload.sensor_type,
+            payload.sensor_id,  # Can be None for Forecast
             timestamp_us,
             payload.latitude,
             payload.longitude,
@@ -157,8 +157,12 @@ async def add_data(payload: InsertPollutionDataRequest):
         )
 
         insert_data(params)
-        logging.info(f"Inserted data for sensor {payload.sensor_id}")
-        return {"success": True, "sensor_id": payload.sensor_id}
+        logging.info(f"Inserted data for {payload.sensor_type}/{payload.sensor_id}")
+        return {
+            "success": True, 
+            "sensor_type": payload.sensor_type,
+            "sensor_id": payload.sensor_id
+        }
 
     except Exception as e:
         logging.error(f"Error adding data: {str(e)}")
@@ -182,7 +186,7 @@ async def get_data(
         longitude: Center point longitude
         radius: Search radius in kilometers
         layers: Optional list of pollution metrics to retrieve
-        sensor_types: Optional list of sensor types ('fixed', 'mobile', 'predicted')
+        sensor_types: Optional list of sensor types
     
     Returns:
         List of sensor readings with requested metrics
@@ -192,7 +196,7 @@ async def get_data(
         layers = AVAILABLE_LAYERS
     
     if not sensor_types:
-        sensor_types = ["mobile"]
+        sensor_types = ['CityAirQ', 'WearAware']
 
     # Redis cache check
     cache_key = generate_cache_key(latitude, longitude, radius, layers, sensor_types)

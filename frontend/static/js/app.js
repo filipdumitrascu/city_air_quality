@@ -589,9 +589,18 @@ async function queryPollutionData() {
 
 // Build popup content showing only measured pollutants (no N/A)
 function buildSensorPopup(reading) {
+    const sensorType = reading.sensor_type;  // CityAirQ, WearAware, SPO-RO, Forecast
     const sensorId = reading.sensor_id;
-    const sensorType = sensorId.startsWith('F') ? 'Fixed' : 'Mobile';
     const timestamp = reading.timestamp;
+    
+    // Map sensor_type to category for display
+    const categoryMap = {
+        'CityAirQ': 'Mobile',
+        'WearAware': 'Mobile',
+        'SPO-RO': 'Fixed',
+        'Forecast': 'Predicted'
+    };
+    const category = categoryMap[sensorType] || 'Unknown';
     
     // Calculate AQI with all available data
     const aqi = calculateAQI(reading);
@@ -609,8 +618,14 @@ function buildSensorPopup(reading) {
         pollutantLines = '<em>No measurements available</em><br>';
     }
     
+    // Build header: sensor_type bold with category, sensor_id below if present
+    let header = `<strong>${sensorType}</strong> <em>(${category})</em>`;
+    if (sensorId) {
+        header += `<br><strong>${sensorId}</strong>`;
+    }
+    
     return `
-        <strong>${sensorId}</strong> <em>(${sensorType})</em><br>
+        ${header}<br>
         <small>${timestamp}</small><br>
         <hr style="margin: 5px 0;">
         ${pollutantLines}
@@ -633,43 +648,53 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
     
     let fixedCount = 0;
     let mobileCount = 0;
+    let predictedCount = 0;
     
     readings.forEach(reading => {
         // Normalize to object format
         let data;
         if (Array.isArray(reading)) {
             // Legacy array format - convert to object
+            // New order: sensor_type, sensor_id, timestamp, lat, lon, ...
             data = {
-                sensor_id: reading[0],
-                timestamp: reading[1],
-                latitude: reading[2],
-                longitude: reading[3],
-                pm10: reading[4],
-                pm2_5: reading[5],
-                no2: reading[6],
-                co: reading[7],
-                co2: reading[8],
-                pm1_0: reading[9],
-                nh3: reading[10],
-                vocs: reading[11]
+                sensor_type: reading[0],
+                sensor_id: reading[1],
+                timestamp: reading[2],
+                latitude: reading[3],
+                longitude: reading[4],
+                pm10: reading[5],
+                pm2_5: reading[6],
+                no2: reading[7],
+                co: reading[8],
+                co2: reading[9],
+                pm1_0: reading[10],
+                nh3: reading[11],
+                vocs: reading[12]
             };
         } else {
             data = reading;
         }
         
-        const sensorType = data.sensor_id.startsWith('F') ? 'Fixed' : 'Mobile';
-        if (sensorType === 'Mobile') mobileCount++;
-        else fixedCount++;
+        // Determine category based on sensor_type
+        const sensorType = data.sensor_type;
+        const isMobile = (sensorType === 'CityAirQ' || sensorType === 'WearAware');
+        const isFixed = (sensorType === 'SPO-RO');
+        const isPredicted = (sensorType === 'Forecast');
+        
+        if (isMobile) mobileCount++;
+        else if (isFixed) fixedCount++;
+        else if (isPredicted) predictedCount++;
         
         const aqi = calculateAQI(data);
         const color = getPollutionColor(aqi);
         
+        // Style based on category
         const markerOptions = {
-            radius: sensorType === 'Fixed' ? 12 : 10,
+            radius: isFixed ? 12 : (isPredicted ? 8 : 10),
             fillColor: color,
-            color: sensorType === 'Fixed' ? '#fff' : '#333',
-            weight: sensorType === 'Fixed' ? 2 : 3,
-            fillOpacity: 0.9
+            color: isFixed ? '#fff' : (isPredicted ? '#9933ff' : '#333'),
+            weight: isFixed ? 2 : 3,
+            fillOpacity: isPredicted ? 0.7 : 0.9
         };
         
         L.circleMarker([data.latitude, data.longitude], markerOptions)
@@ -678,10 +703,18 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
     });
     
     if (readings.length > 0) {
-        const getCoords = r => Array.isArray(r) ? [r[2], r[3]] : [r.latitude, r.longitude];
+        const getCoords = r => Array.isArray(r) ? [r[3], r[4]] : [r.latitude, r.longitude];
         const bounds = L.latLngBounds(readings.map(getCoords));
         map.fitBounds(bounds, { padding: [50, 50] });
     }
     
-    showMessage(`Found ${readings.length} readings (${fixedCount} fixed, ${mobileCount} mobile)`, 'success');
+    // Build summary message
+    let summary = `Found ${readings.length} readings`;
+    let parts = [];
+    if (fixedCount > 0) parts.push(`${fixedCount} fixed`);
+    if (mobileCount > 0) parts.push(`${mobileCount} mobile`);
+    if (predictedCount > 0) parts.push(`${predictedCount} predicted`);
+    if (parts.length > 0) summary += ` (${parts.join(', ')})`;
+    
+    showMessage(summary, 'success');
 }

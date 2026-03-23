@@ -32,7 +32,7 @@ echo ""
 # TEST 2: Ingest Data
 echo "Test 2: Ingest Data"
 TIMESTAMP_MS=$(($(date +%s) * 1000))
-INGEST_PAYLOAD="{\"sensor_id\":\"IntTest_001\",\"sensor_type\":\"mobile\",\"timestamp\":$TIMESTAMP_MS,\"latitude\":44.4268,\"longitude\":26.1025,\"pm10\":45.3,\"pm2_5\":25.2}"
+INGEST_PAYLOAD="{\"sensor_type\":\"CityAirQ\", \"sensor_id\":\"001\",\"timestamp\":$TIMESTAMP_MS,\"latitude\":44.4268,\"longitude\":26.1025,\"pm10\":45.3,\"pm2_5\":25.2}"
  
 # Try to load API key from file, fallback to env var
 API_KEY_FILE="$(dirname "$0")/../../../deploy/sensor-api-key.txt"
@@ -63,7 +63,7 @@ echo ""
 
 # TEST 3: Query Data
 echo "Test 3: Query Pollution Data"
-QUERY_PAYLOAD='{"latitude":44.4350,"longitude":26.1015,"radius":5.0,"sensor_types":["fixed","mobile"],"layers":["pm10","pm2_5"]}'
+QUERY_PAYLOAD='{"latitude":44.4350,"longitude":26.1015,"radius":5.0,"sensor_types":["CityAirQ","WearAware","SPO-RO"],"layers":["pm10","pm2_5"]}'
 QUERY_RESPONSE=$(curl -s -X POST "$BASE_URL/results/" -H "Content-Type: application/json" -d "$QUERY_PAYLOAD")
 echo "Response: ${QUERY_RESPONSE:0:200}..."
 if echo "$QUERY_RESPONSE" | grep -qE "(data|results|\[)"; then
@@ -75,7 +75,7 @@ echo ""
 
 # TEST 4: Route (Foot)
 echo "Test 4: Route (Foot)"
-ROUTE_FOOT='{"start":{"lat":44.4350,"lon":26.1015},"goal":{"lat":44.4360,"lon":26.1020},"alpha":0.5,"transport_mode":"foot","sensor_types":["fixed","mobile"]}'
+ROUTE_FOOT='{"start":{"lat":44.4350,"lon":26.1015},"goal":{"lat":44.4360,"lon":26.1020},"alpha":0.5,"transport_mode":"foot","sensor_types":["CityAirQ","WearAware","SPO-RO"]}'
 ROUTE_FOOT_RESP=$(curl -s -X POST "$BASE_URL/route/" -H "Content-Type: application/json" -d "$ROUTE_FOOT")
 echo "Response: ${ROUTE_FOOT_RESP:0:200}..."
 if echo "$ROUTE_FOOT_RESP" | grep -qE "(coordinates|waypoints|route)"; then

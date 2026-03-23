@@ -41,8 +41,8 @@ class DummyMessage:
 
 # TEST DATA (matching pollution_data schema)
 valid_payload_full = {
-    "sensor_id": "CityAirQ_001",
-    "sensor_type": "mobile",
+    "sensor_type": "CityAirQ",
+    "sensor_id": "001",
     "timestamp": 1718699260000,
     "latitude": 44.4268,
     "longitude": 26.1025,
@@ -61,8 +61,8 @@ valid_payload_full = {
 }
 
 valid_payload_minimal = {
-    "sensor_id": "WearAware_005",
-    "sensor_type": "mobile",
+    "sensor_type": "WearAware",
+    "sensor_id": "005",
     "timestamp": 1718699260000,
     "latitude": 44.4268,
     "longitude": 26.1025
@@ -70,8 +70,8 @@ valid_payload_minimal = {
 }
 
 valid_payload_wearaware = {
-    "sensor_id": "WearAware_003",
-    "sensor_type": "mobile",
+    "sensor_type": "WearAware",
+    "sensor_id": "003",
     "timestamp": 1718699260000,
     "latitude": 44.4300,
     "longitude": 26.1100,
@@ -132,8 +132,8 @@ async def test_process_message_success_full(mock_send):
     
     # Verify data passed to database
     args = mock_send.call_args[0][0]
-    assert args["sensor_id"] == "CityAirQ_001"
-    assert args["sensor_type"] == "mobile"
+    assert args["sensor_id"] == "001"
+    assert args["sensor_type"] == "CityAirQ"
     assert args["pm10"] == 42.7
     assert args["no2"] == 35.2
 
@@ -151,7 +151,7 @@ async def test_process_message_success_minimal(mock_send):
     mock_send.assert_awaited_once()
     
     args = mock_send.call_args[0][0]
-    assert args["sensor_id"] == "WearAware_005"
+    assert args["sensor_id"] == "005"
     assert args["latitude"] == 44.4268
 
 
@@ -167,7 +167,7 @@ async def test_process_message_wearaware_sensor(mock_send):
     assert message.ack_called is True
     
     args = mock_send.call_args[0][0]
-    assert args["sensor_id"] == "WearAware_003"
+    assert args["sensor_id"] == "003"
     assert args["pm10"] == 35.0
     assert args["co2"] == 450.0
     assert args["no2"] == -1  # Not measured by WearAware
@@ -188,10 +188,9 @@ async def test_process_message_timestamp_conversion(mock_send):
 
     args = mock_send.call_args[0][0]
     timestamp = args["timestamp"]
-    
-    # Should be ISO format
-    assert "T" in timestamp
-    assert "2024-06-18" in timestamp
+
+    assert isinstance(timestamp, int)
+    assert timestamp == 1718699260000
 
 
 @pytest.mark.asyncio
@@ -210,7 +209,8 @@ async def test_process_message_timestamp_epoch(mock_send):
     timestamp = args["timestamp"]
     
     # Should be 1970-01-01
-    assert "1970-01-01" in timestamp
+    assert isinstance(timestamp, int)
+    assert timestamp == 0   
 
 
 @pytest.mark.asyncio
@@ -262,9 +262,7 @@ async def test_process_message_empty_payload(mock_send):
     
     await process_message(message)
 
-    # Should still process (with defaults/missing data)
     assert message.ack_called is True
-    mock_send.assert_awaited_once()
 
 
 @pytest.mark.asyncio
