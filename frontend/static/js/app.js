@@ -205,16 +205,20 @@ function clearPollutionData() {
 // Get selected sensor types for route
 function getRouteSensorTypes() {
     const sensorTypes = [];
-    if (document.getElementById('sensor-fixed').checked) sensorTypes.push('fixed');
-    if (document.getElementById('sensor-mobile').checked) sensorTypes.push('mobile');
+    if (document.getElementById('sensor-spo-ro').checked) sensorTypes.push('SPO-RO');
+    if (document.getElementById('sensor-cityairq').checked) sensorTypes.push('CityAirQ');
+    if (document.getElementById('sensor-wearaware').checked) sensorTypes.push('WearAware');
+    if (document.getElementById('sensor-forecast').checked) sensorTypes.push('Forecast');
     return sensorTypes;
 }
 
 // Get selected sensor types for query
 function getQuerySensorTypes() {
     const sensorTypes = [];
-    if (document.getElementById('query-sensor-fixed').checked) sensorTypes.push('fixed');
-    if (document.getElementById('query-sensor-mobile').checked) sensorTypes.push('mobile');
+    if (document.getElementById('query-sensor-spo-ro').checked) sensorTypes.push('SPO-RO');
+    if (document.getElementById('query-sensor-cityairq').checked) sensorTypes.push('CityAirQ');
+    if (document.getElementById('query-sensor-wearaware').checked) sensorTypes.push('WearAware');
+    if (document.getElementById('query-sensor-forecast').checked) sensorTypes.push('Forecast');
     return sensorTypes;
 }
 
@@ -223,7 +227,7 @@ async function calculateRoute() {
     // Validate sensor types
     const sensorTypes = getRouteSensorTypes();
     if (sensorTypes.length === 0) {
-        showMessage('Please select at least one sensor type (Fixed or Mobile)', 'info');
+        showMessage('Please select at least one sensor type', 'info');
         return;
     }
     
@@ -531,7 +535,7 @@ async function queryPollutionData() {
     // Validate sensor types FIRST
     const sensorTypes = getQuerySensorTypes();
     if (sensorTypes.length === 0) {
-        showMessage('Please select at least one sensor type (Fixed or Mobile)', 'info');
+        showMessage('Please select at least one sensor type', 'info');
         return;
     }
     

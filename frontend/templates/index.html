@@ -61,8 +61,10 @@
                 <div class="form-group">
                     <label>Sensor Types</label>
                     <div class="checkbox-group">
-                        <label><input type="checkbox" id="sensor-fixed" checked> Fixed Sensors</label>
-                        <label><input type="checkbox" id="sensor-mobile" checked> Mobile Sensors</label>
+                        <label><input type="checkbox" id="sensor-spo-ro" checked> SPO-RO <em>(Fixed)</em></label>
+                        <label><input type="checkbox" id="sensor-cityairq" checked> CityAirQ <em>(Mobile)</em></label>
+                        <label><input type="checkbox" id="sensor-wearaware" checked> WearAware <em>(Mobile)</em></label>
+                        <label><input type="checkbox" id="sensor-forecast"> Forecast <em>(Predicted)</em></label>
                     </div>
                 </div>
                 
@@ -93,8 +95,10 @@
                 <div class="form-group">
                     <label>Sensor Types</label>
                     <div class="checkbox-group">
-                        <label><input type="checkbox" id="query-sensor-fixed" checked> Fixed Sensors</label>
-                        <label><input type="checkbox" id="query-sensor-mobile" checked> Mobile Sensors</label>
+                        <label><input type="checkbox" id="query-sensor-spo-ro" checked> SPO-RO <em>(Fixed)</em></label>
+                        <label><input type="checkbox" id="query-sensor-cityairq" checked> CityAirQ <em>(Mobile)</em></label>
+                        <label><input type="checkbox" id="query-sensor-wearaware" checked> WearAware <em>(Mobile)</em></label>
+                        <label><input type="checkbox" id="query-sensor-forecast"> Forecast <em>(Predicted)</em></label>
                     </div>
                 </div>
     
@@ -120,7 +124,21 @@
                 <div class="legend-item"><span class="legend-color" style="background: #ff8800;"></span> Unhealthy (100-150)</div>
                 <div class="legend-item"><span class="legend-color" style="background: #ff0000;"></span> Very Unhealthy (150+)</div>
                 <hr style="margin: 10px 0; border-color: #0f3460;">
-                <h4>Markers</h4>
+                <h4>Sensor Types</h4>
+                <div class="legend-item">
+                    <svg width="16" height="16"><circle cx="8" cy="8" r="6" fill="#888" stroke="#fff" stroke-width="2"/></svg>
+                    SPO-RO (Fixed)
+                </div>
+                <div class="legend-item">
+                    <svg width="16" height="16"><circle cx="8" cy="8" r="5" fill="#888" stroke="#333" stroke-width="2"/></svg>
+                    CityAirQ / WearAware (Mobile)
+                </div>
+                <div class="legend-item">
+                    <svg width="16" height="16"><circle cx="8" cy="8" r="4" fill="#888" fill-opacity="0.7" stroke="#9933ff" stroke-width="2"/></svg>
+                    Forecast (Predicted)
+                </div>
+                <hr style="margin: 10px 0; border-color: #0f3460;">
+                <h4>Route Markers</h4>
                 <div class="legend-item"><span style="background:#00cc66; width:16px; height:16px; display:inline-block; border-radius:2px;"></span> Start Point</div>
                 <div class="legend-item"><span style="color:#ff4444; font-weight:bold; font-size:16px;">&#10005;</span> End Point</div>
             </div>
