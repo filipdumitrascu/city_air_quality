@@ -169,12 +169,19 @@ async def add_data(payload: InsertPollutionDataRequest):
         insert_data(params)
         logging.info(f"Inserted data for {payload.sensor_type}/{payload.sensor_id}")
         
-        # Clear query cache to ensure new data is visible
+        # Clear ALL query caches to ensure new data is visible
+        cache_prefixes = ["db_query:*", "provider_query:*", "client_query:*", "route:*"]
+        total_cleared = 0
+        
         try:
-            keys = redis_client.keys("db_query:*")
-            if keys:
-                redis_client.delete(*keys)
-                logging.info(f"Cleared {len(keys)} cached queries after insert")
+            for prefix in cache_prefixes:
+                keys = redis_client.keys(prefix)
+                if keys:
+                    redis_client.delete(*keys)
+                    total_cleared += len(keys)
+            
+            if total_cleared > 0:
+                logging.info(f"Cleared {total_cleared} cached queries after insert")
         except Exception as e:
             logging.warning(f"Failed to clear cache: {e}")
         
