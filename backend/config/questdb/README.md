@@ -4,7 +4,7 @@ Configuration and setup for CityAirQ pollution monitoring database.
 
 ## Database Schema
 
-**Table:** `sensor_readings`
+**Table:** `pollution_datas`
 
 | Column      | Type      | Description                           |
 | ----------- | --------- | ------------------------------------- |
@@ -80,15 +80,15 @@ See section below for Excel file format requirements.
 
 ```sql
 -- Check total records
-SELECT COUNT(*) FROM sensor_readings;
+SELECT COUNT(*) FROM pollution_datas;
 
 -- Count by sensor type
 SELECT sensor_type, COUNT(*) as count 
-FROM sensor_readings 
+FROM pollution_datas 
 GROUP BY sensor_type;
 
 -- Latest readings
-SELECT * FROM sensor_readings 
+SELECT * FROM pollution_datas 
 ORDER BY timestamp DESC 
 LIMIT 10;
 
@@ -98,7 +98,7 @@ SELECT
     AVG(pm10) as avg_pm10,
     AVG(pm25) as avg_pm25,
     MAX(pm10) as max_pm10
-FROM sensor_readings
+FROM pollution_datas
 WHERE timestamp > dateadd('h', -24, now())
 GROUP BY sensor_type;
 ```
@@ -117,7 +117,7 @@ conn = psycopg2.connect(
 )
 
 cur = conn.cursor()
-cur.execute("SELECT COUNT(*) FROM sensor_readings")
+cur.execute("SELECT COUNT(*) FROM pollution_datas")
 count = cur.fetchone()[0]
 print(f"Total readings: {count}")
 ```
@@ -129,7 +129,7 @@ print(f"Total readings: {count}")
 ### Clear All Data
 
 ```sql
-TRUNCATE TABLE sensor_readings;
+TRUNCATE TABLE pollution_datas;
 ```
 
 ### Re-import Data
@@ -143,7 +143,7 @@ python3 populate_questdb.py --force  # Drops and recreates
 ```bash
 # Export to CSV
 psql -h localhost -p 8812 -U admin -d qdb -c \
-  "COPY (SELECT * FROM sensor_readings) TO STDOUT CSV HEADER" \
+  "COPY (SELECT * FROM pollution_datas) TO STDOUT CSV HEADER" \
   > backup_$(date +%Y%m%d).csv
 ```
 
@@ -151,7 +151,7 @@ psql -h localhost -p 8812 -U admin -d qdb -c \
 
 ```bash
 psql -h localhost -p 8812 -U admin -d qdb -c \
-  "COPY sensor_readings FROM STDIN CSV HEADER" < backup.csv
+  "COPY pollution_datas FROM STDIN CSV HEADER" < backup.csv
 ```
 
 ---

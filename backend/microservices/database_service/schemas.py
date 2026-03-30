@@ -1,13 +1,19 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
+import time
+
+
+def get_current_timestamp_ms() -> int:
+    """Get current Unix timestamp in milliseconds."""
+    return int(time.time() * 1000)
 
 
 class InsertPollutionDataRequest(BaseModel):
     """
     Request model for inserting sensor data.
     
-    Required: sensor_type, timestamp, latitude, longitude
-    Optional: sensor_id (None for Forecast), all pollutant fields default to -1
+    Required: sensor_type, latitude, longitude
+    Optional: sensor_id (None for Forecast), timestamp (default: current time)
     """
     # Required fields
     sensor_type: Literal["CityAirQ", "WearAware", "SPO-RO", "Forecast"] = Field(
@@ -16,7 +22,9 @@ class InsertPollutionDataRequest(BaseModel):
     sensor_id: Optional[str] = Field(
         default=None, description="Sensor identifier (e.g., '001'). None for Forecast."
     )
-    timestamp: int = Field(..., description="Unix timestamp in milliseconds")
+    timestamp: Optional[int] = Field(
+        default=None, description="Unix timestamp in milliseconds. Default: current time."
+    )
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     

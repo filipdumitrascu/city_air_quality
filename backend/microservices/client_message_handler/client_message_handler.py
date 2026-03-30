@@ -35,6 +35,15 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+# REQUEST MODELS (matching pollution_data schema)
+# Romania timezone offset (GMT+3 during summer, GMT+2 during winter)
+ROMANIA_OFFSET_MS = 3 * 60 * 60 * 1000  # 3 hours in milliseconds
+
+def get_current_timestamp_ms() -> int:
+    """Get current Unix timestamp in milliseconds, adjusted for Romania (GMT+3)."""
+    import time
+    return int(time.time() * 1000) + ROMANIA_OFFSET_MS
+
 
 class IngestPayload(BaseModel):
     """
@@ -46,8 +55,8 @@ class IngestPayload(BaseModel):
       - SPO-RO     (fixed, EEA stations)
       - Forecast   (predicted, ML)
     
-    Required: sensor_type, timestamp, latitude, longitude
-    Optional: sensor_id (None for Forecast)
+    Required: sensor_type, latitude, longitude
+    Optional: sensor_id (None for Forecast), timestamp (default: current time)
     """
     # Required fields
     sensor_type: Literal["CityAirQ", "WearAware", "SPO-RO", "Forecast"] = Field(
@@ -56,7 +65,9 @@ class IngestPayload(BaseModel):
     sensor_id: Optional[str] = Field(
         default=None, description="Sensor identifier (e.g., '001'). None for Forecast."
     )
-    timestamp: int = Field(..., description="Unix timestamp in milliseconds")
+    timestamp: Optional[int] = Field(
+        default=None, description="Unix timestamp in milliseconds. Default: current time."
+    )
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     
@@ -220,10 +231,17 @@ async def ingest_data(
     Ingest sensor data into the database.
     
     Accepts data from CityAirQ, WearAware, SPO-RO, and Forecast sensors.
+    If timestamp is not provided, current time is used.
     Authentication: REQUIRED (Google OAuth or API key)
     """
     try:
         data = payload.model_dump()
+        
+        # Set timestamp to current time if not provided
+        if data.get('timestamp') is None:
+            data['timestamp'] = get_current_timestamp_ms()
+            logging.info(f"Using current timestamp: {data['timestamp']}")
+        
         data['submitted_by'] = user.get('email')
         
         PubSubClientPublisher.publish_message("ingest_service_messages", data)
@@ -234,7 +252,8 @@ async def ingest_data(
             content={
                 "message": "Data accepted for processing",
                 "sensor_type": payload.sensor_type,
-                "sensor_id": payload.sensor_id
+                "sensor_id": payload.sensor_id,
+                "timestamp": data['timestamp']
             }
         )
     except Exception as e:

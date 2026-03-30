@@ -591,11 +591,21 @@ async function queryPollutionData() {
     }
 }
 
+// Format timestamp for display (remove microseconds, make readable)
+function formatTimestamp(ts) {
+    if (!ts) return 'Unknown';
+    // ts format from DB: "2024-03-09 16:00:00" or "2024-03-09 16:00:00.283000"
+    // Remove microseconds if present
+    let cleaned = ts.split('.')[0];
+    // Replace space with ' at ' for readability
+    return cleaned.replace(' ', ' at ');
+}
+
 // Build popup content showing only measured pollutants (no N/A)
 function buildSensorPopup(reading) {
     const sensorType = reading.sensor_type;  // CityAirQ, WearAware, SPO-RO, Forecast
     const sensorId = reading.sensor_id;
-    const timestamp = reading.timestamp;
+    const timestamp = formatTimestamp(reading.timestamp);
     
     // Map sensor_type to category for display
     const categoryMap = {

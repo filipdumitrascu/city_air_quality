@@ -129,10 +129,20 @@ async def add_data(payload: InsertPollutionDataRequest):
     Insert sensor data into pollution_data table.
     
     Accepts data from CityAirQ, WearAware, SPO-RO, and Forecast sensors.
+    If timestamp is not provided, current time is used.
+    Clears query cache after successful insert to ensure fresh data.
     """
     try:
+        # Use current timestamp if not provided (adjusted for Romania GMT+3)
+        timestamp_ms = payload.timestamp
+        if timestamp_ms is None:
+            import time
+            ROMANIA_OFFSET_MS = 3 * 60 * 60 * 1000  # 3 hours
+            timestamp_ms = int(time.time() * 1000) + ROMANIA_OFFSET_MS
+            logging.info(f"Using current timestamp (GMT+3): {timestamp_ms}")
+        
         # Convert timestamp from milliseconds to microseconds for QuestDB
-        timestamp_us = payload.timestamp * 1000
+        timestamp_us = timestamp_ms * 1000
         
         # Build params tuple matching pollution_data schema
         # Order: sensor_type, sensor_id, timestamp, latitude, longitude, ...
@@ -158,10 +168,20 @@ async def add_data(payload: InsertPollutionDataRequest):
 
         insert_data(params)
         logging.info(f"Inserted data for {payload.sensor_type}/{payload.sensor_id}")
+        
+        # Clear query cache to ensure new data is visible
+        try:
+            keys = redis_client.keys("db_query:*")
+            if keys:
+                redis_client.delete(*keys)
+                logging.info(f"Cleared {len(keys)} cached queries after insert")
+        except Exception as e:
+            logging.warning(f"Failed to clear cache: {e}")
+        
         return {
-            "success": True, 
             "sensor_type": payload.sensor_type,
-            "sensor_id": payload.sensor_id
+            "sensor_id": payload.sensor_id,
+            "cache_cleared": True
         }
 
     except Exception as e:
