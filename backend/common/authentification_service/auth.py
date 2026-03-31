@@ -5,8 +5,8 @@ from typing import Optional
 
 GOOGLE_TOKEN_INFO_URL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 
-SENSOR_API_KEYS = set(
-    key.strip() for key in os.getenv("SENSOR_API_KEYS", "").split(",") if key.strip()
+INGEST_KEY = set(
+    key.strip() for key in os.getenv("INGEST_KEY", "").split(",") if key.strip()
 )
 
 def verify_google_token(token: str) -> dict:
@@ -78,7 +78,7 @@ async def authorize(authorization: Optional[str] = Header(None, alias="Authoriza
         )
     
     # Check API key first (faster, no network call)
-    if token in SENSOR_API_KEYS:
+    if token in INGEST_KEY:
         return {
             "type": "api_key",
             "email": f"sensor-{token[:8]}@cityairq.local"
