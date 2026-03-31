@@ -581,7 +581,7 @@ async function queryPollutionData() {
             return;
         }
         
-        displayPollutionData(data.data, lat, lon, radius);
+        displayPollutionData(data.data, lat, lon, radius, data.cached);
         
     } catch (error) {
         console.error('Query error:', error);
@@ -649,7 +649,7 @@ function buildSensorPopup(reading) {
 }
 
 // Display pollution data
-function displayPollutionData(readings, centerLat, centerLon, radius) {
+function displayPollutionData(readings, centerLat, centerLon, radius, cached = false) {
     pollutionLayer.clearLayers();
     
     L.circle([centerLat, centerLon], {
@@ -729,6 +729,7 @@ function displayPollutionData(readings, centerLat, centerLon, radius) {
     if (mobileCount > 0) parts.push(`${mobileCount} mobile`);
     if (predictedCount > 0) parts.push(`${predictedCount} predicted`);
     if (parts.length > 0) summary += ` (${parts.join(', ')})`;
+    summary += ` | Cache HIT: ${cached ? 'Yes' : 'No'}`;
     
     showMessage(summary, 'success');
 }
