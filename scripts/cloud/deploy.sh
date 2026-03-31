@@ -46,10 +46,15 @@ kubectl create secret generic google-maps-secret \
     --from-file=GOOGLE_MAPS_API_KEY=google-maps-key.txt \
     --dry-run=client -o yaml | kubectl apply -f -
 
-# Ingest auth key (API developers, no OAuth)
-kubectl create secret generic sensor-api-secret \
-  --from-file=SENSOR_API_KEYS=sensor-api-key.txt \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Ingest auth key (API for developers, no OAuth)
+kubectl create secret generic ingest-secret \
+    --from-file=INGEST_KEY=ingest-key.txt \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+# Fixed sensors API from OpenAQ
+kubectl create secret generic fixed-sensors-secret \
+    --from-file=FIXED_SENSORS_KEY=fixed-sensors-key.txt \
+    --dry-run=client -o yaml | kubectl apply -f -
 
 # Database credentials
 kubectl create secret generic database-credentials \
@@ -110,23 +115,6 @@ except Exception as e:
     sys.exit(1)
 PYTHON_SCRIPT
 
-# Import sample data (Fixed sensors)
-EXCEL_FILE_FIXED="../backend/config/questdb/xlsxs/fixed_sensors_2026.xlsx"
-if [ -f "$EXCEL_FILE_FIXED" ]; then
-    echo -n "Importing fixed sensors data..."
-    python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_FIXED" 2>/dev/null && echo " done" || echo " skipped"
-else
-    echo "Warning: Fixed sensors Excel file not found - skipping"
-fi
-
-# Import sample data (Mobile sensors)
-# EXCEL_FILE_MOBILE="../backend/config/questdb/xlsxs/mobile_sensors_2026.xlsx"
-# if [ -f "$EXCEL_FILE_MOBILE" ]; then
-#     echo -n "Importing mobile sensors data..."
-#     python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_MOBILE" 2>/dev/null && echo " done" || echo " skipped"
-# else
-#     echo "Warning: Mobile sensors Excel file not found - skipping"
-# fi
 
 # Kill port-forward
 kill $PF_PID 2>/dev/null || true

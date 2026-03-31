@@ -20,11 +20,11 @@ spec:
         - containerPort: 8000
           name: http
         env:
-        - name: SENSOR_API_KEYS
+        - name: INGEST_KEY
           valueFrom:
             secretKeyRef:
-              name: sensor-api-secret
-              key: SENSOR_API_KEYS
+              name: ingest-secret
+              key: INGEST_KEY
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: /app/credentials.json
         - name: ROUTING_SERVICE_URL

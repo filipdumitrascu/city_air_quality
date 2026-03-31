@@ -20,6 +20,11 @@ spec:
         - containerPort: 8000
           name: http
         env:
+        - name: OPENAQ_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fixed-sensors-secret
+              key: FIXED_SENSORS_KEY
         - name: DB_USER
           valueFrom:
             secretKeyRef:
