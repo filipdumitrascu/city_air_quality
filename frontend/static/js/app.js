@@ -72,8 +72,16 @@ function calculateAQI(data) {
     let totalWeight = 0;
     
     for (const [key, config] of Object.entries(POLLUTANT_CONFIG)) {
-        const value = data[key];
+        let value = data[key];
         if (value !== null && value !== undefined && value >= 0) {
+            // Convert CO from ug/m3 (OpenAQ) to ppm (1 ppm = 1145 ug/m3)
+            if (key === 'co' && value > 100) {
+                value = value / 1145;
+            }
+            // Convert NO2 from ug/m3 to ppb (1 ppb = 1.88 ug/m3)
+            if (key === 'no2' && value < 500) {
+                value = value / 1.88;
+            }
             const normalized = normalizePollutant(value, config.thresholds);
             weightedSum += normalized * config.weight;
             totalWeight += config.weight;

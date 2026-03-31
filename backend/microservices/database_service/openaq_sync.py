@@ -12,21 +12,21 @@ import httpx
 from datetime import datetime
 from typing import List, Callable
 
-# CONFIGURATION
 SYNC_INTERVAL = int(os.getenv('OPENAQ_SYNC_INTERVAL', '3600'))
 READINGS_TO_KEEP = int(os.getenv('OPENAQ_READINGS_TO_KEEP', '5'))
 API_KEY = os.getenv('OPENAQ_API_KEY', '')
 BASE_URL = "https://api.openaq.org/v3"
 
 STATIONS = {
-    10779: {'name': 'RO0065A', 'code': 'RO0065A'},
-    10781: {'name': 'RO0066A', 'code': 'RO0066A'},
-    9358:  {'name': 'RO0067A', 'code': 'RO0067A'},
-    10784: {'name': 'RO0068A', 'code': 'RO0068A'},
-    9360:  {'name': 'RO0069A', 'code': 'RO0069A'},
-    10789: {'name': 'RO0070A', 'code': 'RO0070A'},
-    2163072: {'name': 'B-3', 'code': 'B-3'},
-    2163068: {'name': 'B-8', 'code': 'B-8'},
+    # Stations with 2026 data (provider: EEA, id: 70)
+    2163068: {'name': 'B-8', 'code': 'B-8'},       # no2, o3, pm10, pm25, so2
+    2163072: {'name': 'B-3', 'code': 'B-3'},       # co, no2, pm10
+    2163078: {'name': 'B-1', 'code': 'B-1'},       # co, no2, o3, pm10, pm25, so2
+    2163080: {'name': 'B-6', 'code': 'B-6'},       # co, no2, pm10
+    2163084: {'name': 'B-5', 'code': 'B-5'},       # co, no2, pm10, so2
+    2163086: {'name': 'B-4', 'code': 'B-4'},       # no2, pm10, so2
+    2163091: {'name': 'B-2', 'code': 'B-2'},       # co, no2, pm10, so2
+    2163092: {'name': 'B-7', 'code': 'B-7'},       # no2, o3, pm10, pm25, so2 (Magurele)
 }
 
 PARAM_MAP = {
@@ -88,6 +88,13 @@ async def fetch_and_process_station(location_id: int) -> List[dict]:
     latest_timestamp = None
     pollutant_count = 0
     
+    # Max age for data (7 days in milliseconds)
+    max_age_ms = 7 * 24 * 60 * 60 * 1000
+    now_ms = int(datetime.now().timestamp() * 1000)
+    
+    # Romania timezone offset (GMT+3 in summer)
+    ROMANIA_OFFSET_MS = 3 * 60 * 60 * 1000
+    
     for sensor in sensors:
         try:
             param_info = sensor.get('parameter', {})
@@ -110,6 +117,14 @@ async def fetch_and_process_station(location_id: int) -> List[dict]:
             if dt_utc:
                 dt = datetime.fromisoformat(dt_utc.replace('Z', '+00:00'))
                 timestamp_ms = int(dt.timestamp() * 1000)
+                
+                # Skip data older than max_age
+                if now_ms - timestamp_ms > max_age_ms:
+                    continue
+                
+                # Add Romania timezone offset (GMT+3)
+                timestamp_ms += ROMANIA_OFFSET_MS
+                
                 if latest_timestamp is None or timestamp_ms > latest_timestamp:
                     latest_timestamp = timestamp_ms
             
@@ -128,6 +143,8 @@ async def fetch_and_process_station(location_id: int) -> List[dict]:
         reading['timestamp'] = latest_timestamp
         readings.append(reading)
         logging.info(f"OpenAQ: {station_code} - {pollutant_count} pollutants")
+    else:
+        logging.info(f"OpenAQ: {station_code} - skipped (no fresh data)")
     
     return readings
 
