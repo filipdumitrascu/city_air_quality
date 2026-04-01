@@ -13,20 +13,21 @@ from datetime import datetime
 from typing import List, Callable
 
 SYNC_INTERVAL = int(os.getenv('OPENAQ_SYNC_INTERVAL', '3600'))
-READINGS_TO_KEEP = int(os.getenv('OPENAQ_READINGS_TO_KEEP', '5'))
+READINGS_TO_KEEP = int(os.getenv('OPENAQ_READINGS_TO_KEEP', '3'))
 API_KEY = os.getenv('OPENAQ_API_KEY', '')
 BASE_URL = "https://api.openaq.org/v3"
 
+# Active Bucharest stations with 2026 data (provider: EEA, id: 70)
+# B-9 to B-30 are offline since 2024-07-30
 STATIONS = {
-    # Stations with 2026 data (provider: EEA, id: 70)
-    2163068: {'name': 'B-8', 'code': 'B-8'},       # no2, o3, pm10, pm25, so2
-    2163072: {'name': 'B-3', 'code': 'B-3'},       # co, no2, pm10
-    2163078: {'name': 'B-1', 'code': 'B-1'},       # co, no2, o3, pm10, pm25, so2
-    2163080: {'name': 'B-6', 'code': 'B-6'},       # co, no2, pm10
-    2163084: {'name': 'B-5', 'code': 'B-5'},       # co, no2, pm10, so2
-    2163086: {'name': 'B-4', 'code': 'B-4'},       # no2, pm10, so2
-    2163091: {'name': 'B-2', 'code': 'B-2'},       # co, no2, pm10, so2
-    2163092: {'name': 'B-7', 'code': 'B-7'},       # no2, o3, pm10, pm25, so2 (Magurele)
+    2163078: {'name': 'B-1', 'code': 'B-1'},   # co, no2, o3, pm10, pm25, so2
+    2163091: {'name': 'B-2', 'code': 'B-2'},   # co, no2, pm10, so2
+    2163072: {'name': 'B-3', 'code': 'B-3'},   # co, no2, pm10
+    2163086: {'name': 'B-4', 'code': 'B-4'},   # no2, pm10, so2
+    2163084: {'name': 'B-5', 'code': 'B-5'},   # co, no2, pm10, so2
+    2163080: {'name': 'B-6', 'code': 'B-6'},   # co, no2, pm10
+    2163092: {'name': 'B-7', 'code': 'B-7'},   # no2, o3, pm10, pm25, so2 (Magurele)
+    2163068: {'name': 'B-8', 'code': 'B-8'},   # no2, o3, pm10, pm25, so2
 }
 
 PARAM_MAP = {
@@ -169,9 +170,7 @@ async def run_sync(
     sync_status['running'] = True
     sync_status['last_sync'] = datetime.now().isoformat()
     
-    logging.info("=" * 50)
     logging.info(f"OpenAQ: Starting sync ({len(STATIONS)} stations)")
-    logging.info("=" * 50)
     
     total_inserted = 0
     total_errors = 0
@@ -203,9 +202,7 @@ async def run_sync(
     if total_errors == 0 and total_inserted > 0:
         sync_status['last_success'] = datetime.now().isoformat()
     
-    logging.info("=" * 50)
     logging.info(f"OpenAQ: Done - {total_inserted} inserted, {total_errors} errors, {total_cleaned} cleaned")
-    logging.info("=" * 50)
 
 async def sync_loop(
     insert_func: Callable[[dict], bool],

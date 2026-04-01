@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Literal
 import time
 
@@ -45,6 +45,14 @@ class InsertPollutionDataRequest(BaseModel):
     pm1_0: float = Field(default=-1, description="PM1.0 ug/m3")
     pm2_5: float = Field(default=-1, description="PM2.5 ug/m3")
     pm10: float = Field(default=-1, description="PM10 ug/m3")
+    
+    # Convert explicit null values to -1
+    @field_validator('altitude', 'humidity', 'pressure', 'temperature',
+                     'co', 'co2', 'no2', 'nh3', 'vocs', 'pm1_0', 'pm2_5', 'pm10',
+                     mode='before')
+    @classmethod
+    def null_to_default(cls, v):
+        return -1 if v is None else v
 
 
 class InsertPollutionDataResponse(BaseModel):

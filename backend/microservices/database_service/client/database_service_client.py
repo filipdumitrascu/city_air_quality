@@ -1,3 +1,10 @@
+"""
+Database Service Client
+
+HTTP client for communicating with Database Service from other microservices.
+Used by Data Provider Service and Ingest Service.
+"""
+
 import httpx
 import logging
 import os
@@ -28,11 +35,21 @@ async def send_data_to_database(payload: dict) -> dict:
     try:
         url = f"{DATABASE_SERVICE_URL}/add_data/"
         
+        # Set defaults for optional fields (database expects -1 for missing values)
+        defaults = {
+            'altitude': -1, 'humidity': -1, 'pressure': -1, 'temperature': -1,
+            'co': -1, 'co2': -1, 'no2': -1, 'nh3': -1, 'vocs': -1,
+            'pm1_0': -1, 'pm2_5': -1, 'pm10': -1
+        }
+        
+        # Apply defaults for missing or None values
+        data = {**defaults, **{k: v for k, v in payload.items() if v is not None}}
+        
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, json=payload)
+            response = await client.post(url, json=data)
         
         if response.status_code == 200:
-            logging.info(f"Data sent to database for sensor {payload.get('sensor_id')}")
+            logging.info(f"Data sent to database for sensor {data.get('sensor_id')}")
             return {"success": True}
         else:
             logging.error(f"Database error: {response.text}")
@@ -59,6 +76,9 @@ async def get_data_from_database(payload: dict) -> str:
     
     Returns:
         JSON string with sensor readings
+    
+    Raises:
+        HTTPException on error
     """
     try:
         url = f"{DATABASE_SERVICE_URL}/get_data/"

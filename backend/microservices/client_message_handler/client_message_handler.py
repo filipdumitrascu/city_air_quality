@@ -1,9 +1,18 @@
+"""
+Client Message Handler - API Gateway for CityAirQ
+
+Main entry point for all client requests. Routes to appropriate services:
+- /ingest/ -> Ingest Service (via PubSub) - REQUIRES AUTH
+- /results/ -> Data Provider Service (via PubSub) - No auth required
+- /route/ -> Routing Service (via HTTP) - No auth required
+"""
+
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
 from typing import Optional, List, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import logging
 import os
 import time
@@ -88,6 +97,14 @@ class IngestPayload(BaseModel):
     pm1_0: Optional[float] = Field(default=-1, description="PM1.0 concentration ug/m3")
     pm2_5: Optional[float] = Field(default=-1, description="PM2.5 concentration ug/m3")
     pm10: Optional[float] = Field(default=-1, description="PM10 concentration ug/m3")
+    
+    # Convert None values to -1 for optional numeric fields
+    @field_validator('altitude', 'humidity', 'pressure', 'temperature', 
+                     'co', 'co2', 'no2', 'nh3', 'vocs', 'pm1_0', 'pm2_5', 'pm10', 
+                     mode='before')
+    @classmethod
+    def none_to_default(cls, v):
+        return -1 if v is None else v
 
 
 class ResultsPayload(BaseModel):

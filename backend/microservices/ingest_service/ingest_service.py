@@ -1,8 +1,13 @@
+"""
+Ingest Service - Sensor Data Processor for CityAirQ
+
+Receives sensor data from Client Message Handler via PubSub,
+processes timestamps, and forwards to Database Service for storage.
+"""
+
 import json
 import logging
 import asyncio
-import os
-from datetime import datetime, timezone
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -20,31 +25,25 @@ logging.basicConfig(
 # PubSub subscription for sensor data
 SUBSCRIPTION_NAME = "ingest_service_messages-sub"
 
+# Default values for optional fields
+OPTIONAL_FIELD_DEFAULTS = {
+    'altitude': -1, 'humidity': -1, 'pressure': -1, 'temperature': -1,
+    'co': -1, 'co2': -1, 'no2': -1, 'nh3': -1, 'vocs': -1,
+    'pm1_0': -1, 'pm2_5': -1, 'pm10': -1
+}
 
-# MESSAGE PROCESSING
 async def process_message(message):
     """
     Process incoming sensor data and store in database.
     
     Expected payload (from Client Message Handler):
     {
-        "sensor_id": "CityAirQ_001",
-        "sensor_type": "mobile",
-        "timestamp": 1718699260000,  # Unix ms
+        "sensor_type": "CityAirQ",
+        "sensor_id": "001",
+        "timestamp": 1718699260000,
         "latitude": 44.4268,
         "longitude": 26.1025,
-        "altitude": 75.0,      # optional, default -1
-        "humidity": 65.5,      # optional, default -1
-        "pressure": 1013.25,   # optional, default -1
-        "temperature": 22.3,   # optional, default -1
-        "co": 0.5,             # optional, default -1
-        "co2": 420.0,          # optional, default -1
-        "no2": 35.2,           # optional, default -1
-        "nh3": 12.1,           # optional, default -1
-        "vocs": 150.0,         # optional, default -1
-        "pm1_0": 8.5,          # optional, default -1
-        "pm2_5": 15.3,         # optional, default -1
-        "pm10": 42.7           # optional, default -1
+        ...optional pollution/weather fields...
     }
     """
     try:
@@ -57,13 +56,18 @@ async def process_message(message):
         sensor_id = data.get("sensor_id", "unknown")
         logging.info(f"Processing data from sensor: {sensor_id}")
 
-        # Validate timestamp is a valid Unix ms integer
+        # Validate timestamp
         timestamp_ms = data.get("timestamp")
         if not isinstance(timestamp_ms, int) or timestamp_ms < 0:
             logging.error(f"Invalid timestamp for sensor {sensor_id}: {timestamp_ms}")
             return
         
-        # Forward to Database Service (timestamp stays as Unix ms int)
+        # Replace None values with defaults (-1)
+        for field, default in OPTIONAL_FIELD_DEFAULTS.items():
+            if data.get(field) is None:
+                data[field] = default
+        
+        # Forward to Database Service
         response = await send_data_to_database(data)
         
         if response.get("success"):
@@ -86,7 +90,6 @@ ingest_subscriber = PubSubClientSubscriber(SUBSCRIPTION_NAME, process_message)
 # FASTAPI APPLICATION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan - start subscriber on startup."""
     asyncio.create_task(ingest_subscriber.start_subscriber())
     logging.info(f"PubSub subscriber started for '{SUBSCRIPTION_NAME}'")
     
