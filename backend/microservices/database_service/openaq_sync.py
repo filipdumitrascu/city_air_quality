@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import List, Callable
 
 SYNC_INTERVAL = int(os.getenv('OPENAQ_SYNC_INTERVAL', '3600'))
-READINGS_TO_KEEP = int(os.getenv('OPENAQ_READINGS_TO_KEEP', '3'))
+READINGS_TO_KEEP = int(os.getenv('OPENAQ_READINGS_TO_KEEP', '5'))
 API_KEY = os.getenv('OPENAQ_API_KEY', '')
 BASE_URL = "https://api.openaq.org/v3"
 
