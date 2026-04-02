@@ -129,7 +129,15 @@ kubectl wait --for=condition=ready pod -l app=database-service --timeout=120s --
 echo "Database Service ready"
 echo ""
 
-# Deploy Routing Service (depends on Redis + Database Service)
+# Deploy Forecast Service (depends on Database Service)
+echo "Deploying Forecast Service..."
+kubectl apply -f microservices/forecast-service-deployment.yaml
+echo "Waiting for Forecast Service to be ready..."
+kubectl wait --for=condition=ready pod -l app=forecast-service --timeout=120s --namespace=default || echo "Forecast Service may be degraded (no model loaded yet)"
+echo "Forecast Service deployed"
+echo ""
+
+# Deploy Routing Service (depends on Redis + Database Service + Forecast Service)
 echo "Deploying Routing Service..."
 kubectl apply -f microservices/routing-service-deployment.yaml
 echo "Waiting for Routing Service to be ready..."

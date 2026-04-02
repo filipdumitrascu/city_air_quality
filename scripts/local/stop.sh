@@ -35,10 +35,11 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         deploy-database-service:latest \
         deploy-ingest-service:latest \
         deploy-routing-service:latest \
+        deploy-forecast-service:latest \
         deploy-client-message-handler:latest \
         deploy-frontend:latest \
         redis:7-alpine \
-        questdb/questdb:latest
+        questdb/questdb:latest \
         2>/dev/null || true
     
     echo ""

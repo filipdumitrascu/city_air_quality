@@ -29,6 +29,12 @@ services:
       context: ../backend
       dockerfile: microservices/client_message_handler/Dockerfile
 
+  forecast-service:
+    image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-forecast_service:latest
+    build:
+      context: ../backend
+      dockerfile: microservices/forecast_service/Dockerfile
+
   frontend:
     image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-frontend:latest
     build:

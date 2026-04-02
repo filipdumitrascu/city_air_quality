@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forecast-service
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: forecast-service
+  template:
+    metadata:
+      labels:
+        app: forecast-service
+    spec:
+      containers:
+      - name: forecast-service
+        image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-forecast_service:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: DATABASE_SERVICE_URL
+          value: "http://database-service:8000"
+        - name: MODEL_PATH
+          value: "/app/model/polpred.pkl"
+        - name: GRID_RESOLUTION
+          value: "0.002"
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/secrets/credentials.json"
+        volumeMounts:
+        - name: credentials
+          mountPath: /secrets
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+      volumes:
+      - name: credentials
+        secret:
+          secretName: credentials-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: forecast-service
+  namespace: default
+spec:
+  selector:
+    app: forecast-service
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  type: ClusterIP

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Kubernetes Delete Script
+# Kubernetes Clean Script
 # Removes all deployments from cluster
 
 set -e
@@ -28,6 +28,9 @@ kubectl delete -f microservices/ingest_service-deployment.yaml --ignore-not-foun
 
 echo "Deleting Routing Service..."
 kubectl delete -f microservices/routing-service-deployment.yaml --ignore-not-found=true
+
+echo "Deleting Forecast Service..."
+kubectl delete -f microservices/forecast-service-deployment.yaml --ignore-not-found=true
 
 echo "Deleting Database Service..."
 kubectl delete -f microservices/database_service-deployment.yaml --ignore-not-found=true

@@ -21,11 +21,18 @@ if [ ! -f "credentials.json" ]; then
     exit 1
 fi
 
+# Check for model file (optional warning)
+if [ ! -f "model/polpred.pkl" ]; then
+    echo "WARNING: model/polpred.pkl not found"
+    echo "Forecast Service will start in degraded mode (no predictions)"
+    echo "Train the model first: python scripts/train_model.py"
+    echo ""
+fi
+
 # Check if ports are in use
-for port in 9000 8812 8000 8001 8080 3000 6379; do
+for port in 9000 8812 8000 8001 8002 8003 8004 8080 3000 6379; do
     if lsof -i :$port > /dev/null 2>&1; then
         echo "WARNING: Port $port is in use. Attempting to free it..."
-        # Try to kill the process using the port
         fuser -k $port/tcp 2>/dev/null || true
         sleep 1
     fi
@@ -104,6 +111,24 @@ for i in {1..15}; do
     sleep 2
 done
 
+# Wait for Forecast Service
+echo -n "Forecast Service..."
+for i in {1..15}; do
+    if curl -sf http://localhost:8004/health > /dev/null 2>&1; then
+        health=$(curl -s http://localhost:8004/health)
+        if echo "$health" | grep -q '"model_loaded":true'; then
+            echo " ready (model loaded)"
+        else
+            echo " ready (no model - degraded)"
+        fi
+        break
+    fi
+    if [ $i -eq 15 ]; then
+        echo " timeout"
+    fi
+    sleep 2
+done
+
 # Wait for Routing Service
 echo -n "Routing Service..."
 for i in {1..15}; do
@@ -143,21 +168,6 @@ for i in {1..15}; do
     sleep 2
 done
 
-# Optional: Import sample data (Fixed sensors)
-EXCEL_FILE_FIXED="../backend/config/questdb/xlsxs/fixed_sensors_2026.xlsx"
-if [ -f "$EXCEL_FILE_FIXED" ]; then
-    echo ""
-    echo -n "Importing fixed sensors data..."
-    python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_FIXED" 2>/dev/null && echo " done" || echo " skipped"
-fi
-
-# Optional: Import sample data (Mobile sensors)
-# EXCEL_FILE_MOBILE="../backend/config/questdb//xlsxs/mobile_sensors_2026.xlsx"
-# if [ -f "$EXCEL_FILE_MOBILE" ]; then
-#     echo -n "Importing mobile sensors data..."
-#     python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE_MOBILE" 2>/dev/null && echo " done" || echo " skipped"
-# fi
-
 echo ""
 echo "Service Status:"
 docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || docker compose ps
@@ -170,6 +180,7 @@ echo "  Client Handler:     http://localhost:8000/docs"
 echo "  Database Service:   http://localhost:8001/docs"
 echo "  Data Provider:      http://localhost:8002/docs"
 echo "  Ingest Service:     http://localhost:8003/docs"
+echo "  Forecast Service:   http://localhost:8004/docs"
 echo "  Routing Service:    http://localhost:8080/docs"
 echo "  Redis:              localhost:6379"
 echo ""

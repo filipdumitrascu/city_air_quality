@@ -62,6 +62,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_SERVICE_URL=http://database-service:8000
+      - FORECAST_SERVICE_URL=http://forecast-service:8000
       - LOG_LEVEL=INFO
     ports:
       - "8080:8000"
@@ -70,6 +71,26 @@ services:
         condition: service_healthy
       database-service:
         condition: service_started
+    networks:
+      - backend-network
+    restart: unless-stopped
+
+  forecast-service:
+    build:
+      context: ../backend
+      dockerfile: microservices/forecast_service/Dockerfile
+    container_name: cityairq-forecast
+    environment:
+      - DATABASE_SERVICE_URL=http://database-service:8000
+      - MODEL_PATH=/app/model/polpred.pkl
+      - GRID_RESOLUTION=0.002
+      - LOG_LEVEL=INFO
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./model:/app/model:ro
+    depends_on:
+      - database-service
     networks:
       - backend-network
     restart: unless-stopped
