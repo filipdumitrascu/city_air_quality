@@ -1,18 +1,3 @@
-"""
-Forecast Service - Spatial Pollution Prediction for CityAirQ
-
-Predicts pollution values at coordinates where no sensor data exists,
-using inverse-distance weighting from nearby fixed and mobile sensors.
-
-Flow:
-1. Receives prediction request (single point or grid)
-2. Fetches current sensor state from database_service
-3. Uses PolPredModel to predict pollution at target coordinates
-4. Inserts predictions as sensor_type="Forecast" into database
-
-Predictions are replaced when real sensor data arrives at same location.
-"""
-
 import os
 import logging
 import asyncio
@@ -246,7 +231,6 @@ app = FastAPI(
 Instrumentator().instrument(app).expose(app)
 
 
-
 # ENDPOINTS
 @app.get("/")
 async def root():
@@ -395,64 +379,110 @@ async def predict_grid(request: GridPredictRequest):
 
 @app.post("/predict/fill-gaps")
 async def predict_fill_gaps(
-    lat_min: float = BUCHAREST_BOUNDS["lat_min"],
-    lat_max: float = BUCHAREST_BOUNDS["lat_max"],
-    lon_min: float = BUCHAREST_BOUNDS["lon_min"],
-    lon_max: float = BUCHAREST_BOUNDS["lon_max"],
-    resolution: float = GRID_RESOLUTION
+    max_neighbor_distance_km: float = 2.0,
+    resolution: float = 0.005  # ~500m for visualization (coarser than routing)
 ):
     """
-    Predict only at grid points that don't have recent sensor data.
+    Predict pollution at grid points that:
+    1. Don't have sensor data
+    2. Have at least one neighbor within max_neighbor_distance_km
     
-    1. Generates grid within bounds
-    2. Fetches existing sensor data
-    3. Filters out grid points near existing sensors
-    4. Predicts only for gaps
+    This is for VISUALIZATION - filling gaps on the pollution map.
+    Called periodically after OpenAQ sync.
+    
+    Args:
+        max_neighbor_distance_km: Only predict if nearest sensor is within this range (default 2km)
+        resolution: Grid resolution in degrees (~0.005 = 500m)
     """
     import time
+    import math
     start_time = time.time()
     
     if not model_status["loaded"] or model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
+        return {
+            "message": "Model not loaded - skipping gap fill",
+            "gaps_filled": 0
+        }
     
-    # Generate all grid points
-    all_points = generate_grid_points(lat_min, lat_max, lon_min, lon_max, resolution)
-    
-    # Fetch existing data
+    # Fetch existing sensor data
     station_state = await fetch_current_sensor_state()
     
-    if len(station_state) < 2:
-        raise HTTPException(status_code=400, detail="Need at least 2 stations")
+    if len(station_state) < 3:
+        return {
+            "message": f"Not enough stations ({len(station_state)}) for gap fill",
+            "gaps_filled": 0
+        }
     
-    # Find grid points that are NOT near existing sensors
+    # Helper: haversine distance in km
+    def haversine(lat1, lon1, lat2, lon2):
+        R = 6371  # Earth radius km
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+        return 2 * R * math.asin(math.sqrt(a))
+    
+    # Build set of existing sensor coordinates (snapped to grid)
     existing_coords = set()
+    sensor_locations = []  # (lat, lon) for distance checks
+    
     for station in station_state:
+        lat, lon = station["lat"], station["lon"]
+        sensor_locations.append((lat, lon))
         # Snap to grid
-        grid_lat = round(station["lat"] / resolution) * resolution
-        grid_lon = round(station["lon"] / resolution) * resolution
+        grid_lat = round(lat / resolution) * resolution
+        grid_lon = round(lon / resolution) * resolution
         existing_coords.add((round(grid_lat, 6), round(grid_lon, 6)))
     
-    # Filter to gaps only
-    gap_points = [
-        p for p in all_points
-        if (round(p.lat, 6), round(p.lon, 6)) not in existing_coords
-    ]
+    # Generate grid points
+    all_points = generate_grid_points(
+        BUCHAREST_BOUNDS["lat_min"], BUCHAREST_BOUNDS["lat_max"],
+        BUCHAREST_BOUNDS["lon_min"], BUCHAREST_BOUNDS["lon_max"],
+        resolution
+    )
     
-    logger.info(f"Grid: {len(all_points)} total, {len(existing_coords)} covered, {len(gap_points)} gaps")
+    # Filter: gaps that have at least one neighbor within range
+    gap_points = []
+    for point in all_points:
+        coord = (round(point.lat, 6), round(point.lon, 6))
+        
+        # Skip if already has sensor
+        if coord in existing_coords:
+            continue
+        
+        # Check if any sensor is within max_neighbor_distance_km
+        has_nearby_neighbor = False
+        for slat, slon in sensor_locations:
+            dist = haversine(point.lat, point.lon, slat, slon)
+            if dist <= max_neighbor_distance_km:
+                has_nearby_neighbor = True
+                break
+        
+        if has_nearby_neighbor:
+            gap_points.append(point)
+    
+    logger.info(f"Gap fill: {len(all_points)} grid points, {len(existing_coords)} have sensors, "
+                f"{len(gap_points)} gaps with neighbors within {max_neighbor_distance_km}km")
     
     if not gap_points:
         return {
-            "message": "No gaps to fill - all grid points have sensor coverage",
+            "message": "No gaps to fill near existing sensors",
             "total_points": len(all_points),
             "covered_points": len(existing_coords),
-            "gaps_filled": 0
+            "gaps_filled": 0,
+            "calculation_time_ms": round((time.time() - start_time) * 1000, 2)
         }
+    
+    # Limit predictions per call
+    max_predictions = 300
+    if len(gap_points) > max_predictions:
+        logger.info(f"Limiting from {len(gap_points)} to {max_predictions} predictions")
+        gap_points = gap_points[:max_predictions]
     
     # Predict for gaps
     timestamp = get_current_timestamp_ms()
     predictions = []
     
-    for point in gap_points[:500]:  # Limit to 500 per call
+    for point in gap_points:
         try:
             pred = model.predict_at(
                 latitude=point.lat,
@@ -471,7 +501,7 @@ async def predict_fill_gaps(
                 "timestamp": timestamp
             })
         except Exception as e:
-            logger.warning(f"Prediction failed: {e}")
+            logger.warning(f"Prediction failed at ({point.lat}, {point.lon}): {e}")
             continue
     
     # Insert to DB
@@ -484,6 +514,8 @@ async def predict_fill_gaps(
     
     calc_time = round((time.time() - start_time) * 1000, 2)
     
+    logger.info(f"Gap fill complete: {inserted_count} predictions in {calc_time}ms")
+    
     return {
         "message": f"Filled {inserted_count} gap points with predictions",
         "total_points": len(all_points),
@@ -491,5 +523,6 @@ async def predict_fill_gaps(
         "gaps_found": len(gap_points),
         "gaps_filled": inserted_count,
         "station_count": len(station_state),
+        "max_neighbor_distance_km": max_neighbor_distance_km,
         "calculation_time_ms": calc_time
     }

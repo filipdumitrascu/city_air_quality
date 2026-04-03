@@ -3,6 +3,8 @@ OpenAQ Data Sync Module
 
 Background task that periodically downloads pollution data from 
 OpenAQ API for fixed stations in Bucharest.
+
+After sync, triggers forecast_service to fill gaps for visualization.
 """
 
 import os
@@ -16,6 +18,10 @@ SYNC_INTERVAL = int(os.getenv('OPENAQ_SYNC_INTERVAL', '3600'))
 READINGS_TO_KEEP = int(os.getenv('OPENAQ_READINGS_TO_KEEP', '5'))
 API_KEY = os.getenv('OPENAQ_API_KEY', '')
 BASE_URL = "https://api.openaq.org/v3"
+
+# Forecast service for gap filling
+FORECAST_SERVICE_URL = os.getenv('FORECAST_SERVICE_URL', 'http://forecast-service:8000')
+ENABLE_GAP_FILL = os.getenv('ENABLE_GAP_FILL', 'true').lower() == 'true'
 
 # Active Bucharest stations with 2026 data (provider: EEA, id: 70)
 # B-9 to B-30 are offline since 2024-07-30
@@ -44,7 +50,9 @@ sync_status = {
     'last_success': None,
     'inserted': 0,
     'errors': 0,
-    'running': False
+    'running': False,
+    'last_gap_fill': None,
+    'gaps_filled': 0
 }
 
 
@@ -195,7 +203,6 @@ async def run_sync(
     if total_inserted > 0:
         clear_cache_func()
     
-    sync_status['running'] = False
     sync_status['inserted'] = total_inserted
     sync_status['errors'] = total_errors
     
@@ -203,6 +210,52 @@ async def run_sync(
         sync_status['last_success'] = datetime.now().isoformat()
     
     logging.info(f"OpenAQ: Done - {total_inserted} inserted, {total_errors} errors, {total_cleaned} cleaned")
+    
+    # Trigger gap fill for visualization
+    if ENABLE_GAP_FILL and total_inserted > 0:
+        gaps_filled = await trigger_gap_fill()
+        sync_status['gaps_filled'] = gaps_filled
+        if gaps_filled > 0:
+            clear_cache_func()  # Clear cache again after gap fill
+    
+    sync_status['running'] = False
+
+async def trigger_gap_fill() -> int:
+    """
+    Call forecast_service to fill gaps near existing sensors.
+    Returns number of gaps filled.
+    """
+    global sync_status
+    
+    logging.info("OpenAQ: Triggering gap fill for visualization...")
+    
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{FORECAST_SERVICE_URL}/predict/fill-gaps",
+                params={
+                    "max_neighbor_distance_km": 2.0,
+                    "resolution": 0.005  # ~500m grid for visualization
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                gaps_filled = data.get('gaps_filled', 0)
+                sync_status['last_gap_fill'] = datetime.now().isoformat()
+                logging.info(f"OpenAQ: Gap fill complete - {gaps_filled} points filled")
+                return gaps_filled
+            else:
+                logging.warning(f"OpenAQ: Gap fill failed with status {response.status_code}")
+                return 0
+                
+    except httpx.ConnectError:
+        logging.info("OpenAQ: Forecast service not available - skipping gap fill")
+        return 0
+    except Exception as e:
+        logging.warning(f"OpenAQ: Gap fill error: {e}")
+        return 0
+
 
 async def sync_loop(
     insert_func: Callable[[dict], bool],
@@ -228,5 +281,7 @@ def get_status() -> dict:
         "readings_per_station": READINGS_TO_KEEP,
         "stations": [info['code'] for info in STATIONS.values()],
         "api_key_configured": bool(API_KEY),
+        "gap_fill_enabled": ENABLE_GAP_FILL,
+        "forecast_service_url": FORECAST_SERVICE_URL,
         "status": sync_status
     }

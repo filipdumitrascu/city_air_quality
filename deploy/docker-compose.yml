@@ -45,6 +45,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://admin:quest@questdb:8812/qdb
       - REDIS_HOST=redis
+      - FORECAST_SERVICE_URL=http://forecast-service:8000
+      - ENABLE_GAP_FILL=true
       - LOG_LEVEL=INFO
     depends_on:
       questdb:
