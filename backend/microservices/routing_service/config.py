@@ -13,6 +13,10 @@ def get_config() -> Dict:
         # Database Service
         "database_service_url": os.getenv("DATABASE_SERVICE_URL", "http://database-service:8000"),
         
+        # Forecast Service
+        "forecast_service_url": os.getenv("FORECAST_SERVICE_URL", "http://forecast-service:8000"),
+        "enable_forecasting": os.getenv("ENABLE_FORECASTING", "true").lower() == "true",
+        
         # Google Maps API
         "google_maps_api_key": os.getenv("GOOGLE_MAPS_API_KEY", ""),
         

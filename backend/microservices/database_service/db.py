@@ -10,6 +10,10 @@ logging.basicConfig(
 
 db_pool = None
 
+# Valid sensor types - no legacy types
+VALID_SENSOR_TYPES = ['SPO-RO', 'CityAirQ', 'WearAware', 'Forecast']
+
+
 # CONNECTION POOL MANAGEMENT
 def init_db():
     """Initialize PostgreSQL connection pool for QuestDB."""
@@ -91,7 +95,6 @@ def insert_data(params):
         if conn:
             release_db_connection(conn)
 
-
 def fetch_data(params):
     """
     Fetch pollution data within geographic bounds.
@@ -100,6 +103,7 @@ def fetch_data(params):
     This means:
     - Fixed sensors (SPO-RO): 1 reading per station (latest)
     - Mobile sensors (CityAirQ, WearAware): 1 reading per unique GPS position (latest)
+    - Forecasts: 1 prediction per grid point (latest)
     
     Args:
         params: Tuple containing:
@@ -108,7 +112,7 @@ def fetch_data(params):
             [2] delta_lat: Latitude delta (radius)
             [3] longitude: Center longitude
             [4] delta_lng: Longitude delta (radius)
-            [5] sensor_types: List of sensor types to filter
+            [5] sensor_types: List of sensor types (SPO-RO, CityAirQ, WearAware, Forecast)
     
     Returns:
         List of dicts with sensor readings (deduplicated by location)
@@ -126,6 +130,11 @@ def fetch_data(params):
         delta_lng = params[4]
         sensor_types = params[5] if len(params) > 5 else ['CityAirQ', 'WearAware']
         
+        # Validate sensor types - only allow the 4 valid types
+        valid_types = [st for st in sensor_types if st in VALID_SENSOR_TYPES]
+        if not valid_types:
+            valid_types = ['CityAirQ', 'WearAware']  # Default to mobile
+        
         # Build column list - always include base columns
         base_columns = ['sensor_type', 'sensor_id', 'timestamp', 'latitude', 'longitude']
         
@@ -138,13 +147,11 @@ def fetch_data(params):
         columns_str = ', '.join(all_columns)
         
         # Build sensor_type filter
-        if sensor_types and len(sensor_types) == 1:
-            sensor_filter = f"AND sensor_type = '{sensor_types[0]}'"
-        elif sensor_types and len(sensor_types) > 1:
-            types_str = "', '".join(sensor_types)
-            sensor_filter = f"AND sensor_type IN ('{types_str}')"
+        if len(valid_types) == 1:
+            sensor_filter = f"AND sensor_type = '{valid_types[0]}'"
         else:
-            sensor_filter = ""
+            types_str = "', '".join(valid_types)
+            sensor_filter = f"AND sensor_type IN ('{types_str}')"
         
         # Calculate bounds
         lat_min = latitude - delta_lat

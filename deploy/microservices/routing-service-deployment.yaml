@@ -26,6 +26,10 @@ spec:
           value: "6379"
         - name: DATABASE_SERVICE_URL
           value: "http://database-service:8000"
+        - name: FORECAST_SERVICE_URL
+          value: "http://forecast-service:8000"
+        - name: ENABLE_FORECASTING
+          value: "true"
         - name: LOG_LEVEL
           value: "INFO"
         - name: GCP_PROJECT_ID

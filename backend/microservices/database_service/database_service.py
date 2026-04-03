@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
 from schemas import InsertPollutionDataRequest
-from db import insert_data, fetch_data, init_db, close_db, get_db_connection, release_db_connection
+from db import insert_data, fetch_data, init_db, close_db, get_db_connection, release_db_connection, VALID_SENSOR_TYPES
 from prometheus_fastapi_instrumentator import Instrumentator
 from typing import List, Optional
 import logging
@@ -55,6 +55,7 @@ def generate_cache_key(latitude: float, longitude: float, radius: float,
     return f"db_query:{hashlib.md5(key_data.encode()).hexdigest()}"
 
 def get_coordinate_deltas(radius_km: float, latitude_deg: float):
+    """Convert radius in km to lat/lon deltas."""
     delta_lat = radius_km / 111.32
     lat_rad = math.radians(latitude_deg)
     km_per_deg_lng = 111.32 * math.cos(lat_rad)
@@ -62,6 +63,7 @@ def get_coordinate_deltas(radius_km: float, latitude_deg: float):
     return delta_lat, delta_lng
 
 def clear_all_caches() -> int:
+    """Clear all cache entries across services."""
     cache_prefixes = ["db_query:*", "provider_query:*", "client_query:*", "route:*"]
     total_cleared = 0
     
@@ -111,13 +113,14 @@ def insert_openaq_reading(reading: dict) -> bool:
         logging.error(f"OpenAQ insert error: {e}")
         return False
 
-def cleanup_old_readings(station_id: str, keep_count: int = 5) -> int:
-    """Delete old readings, keeping only latest N."""
+def cleanup_old_readings(station_id: str, keep_count: int = 3) -> int:
+    """Delete old readings for a station, keeping only latest N."""
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # Get timestamps of readings to keep
         query = """
             SELECT timestamp FROM pollution_data
             WHERE sensor_type = 'SPO-RO' AND sensor_id = %s
@@ -133,6 +136,7 @@ def cleanup_old_readings(station_id: str, keep_count: int = 5) -> int:
         
         cutoff_timestamp = rows[-1][0]
         
+        # Count how many will be deleted
         count_query = """
             SELECT COUNT(*) FROM pollution_data
             WHERE sensor_type = 'SPO-RO' AND sensor_id = %s AND timestamp < %s
@@ -140,20 +144,16 @@ def cleanup_old_readings(station_id: str, keep_count: int = 5) -> int:
         cursor.execute(count_query, (station_id, cutoff_timestamp))
         count = cursor.fetchone()[0]
         
-        if count == 0:
-            cursor.close()
-            return 0
-        
-        delete_query = """
-            DELETE FROM pollution_data
-            WHERE sensor_type = 'SPO-RO' AND sensor_id = %s AND timestamp < %s
-        """
-        cursor.execute(delete_query, (station_id, cutoff_timestamp))
-        conn.commit()
+        # Note: QuestDB doesn't support DELETE with WHERE on non-partitioned columns
+        # This cleanup only works if data is partitioned by day
+        # For now, we log the count but can't actually delete
         cursor.close()
         
-        logging.info(f"Cleaned {count} old readings for {station_id}")
-        return count
+        if count > 0:
+            logging.debug(f"Station {station_id} has {count} old readings (cleanup skipped - QuestDB limitation)")
+        
+        return 0  # Return 0 since we can't actually delete
+        
     except Exception as e:
         logging.error(f"Cleanup error for {station_id}: {e}")
         return 0
@@ -165,6 +165,8 @@ def cleanup_old_readings(station_id: str, keep_count: int = 5) -> int:
 # FASTAPI APPLICATION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application lifespan - startup and shutdown."""
+    # Startup
     try:
         init_db()
         logging.info("Database connection pool initialized")
@@ -182,9 +184,11 @@ async def lifespan(app: FastAPI):
         openaq_sync.sync_loop(insert_openaq_reading, cleanup_old_readings, clear_all_caches)
     )
     logging.info(f"OpenAQ sync started (interval: {openaq_sync.SYNC_INTERVAL}s)")
+    logging.info(f"Valid sensor types: {VALID_SENSOR_TYPES}")
     
     yield
     
+    # Shutdown
     sync_task.cancel()
     try:
         await sync_task
@@ -199,20 +203,21 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Database Service",
     description="QuestDB interface with OpenAQ sync",
-    version="2.1.0",
+    version="2.2.0",
     lifespan=lifespan
 )
 
 Instrumentator().instrument(app).expose(app)
 
 
-# HEALTH ENDPOINTS
+# ENDPOINTS
 @app.get("/")
 async def root():
     return {
         "service": "database_service",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "status": "running",
+        "sensor_types": VALID_SENSOR_TYPES,
         "openaq": {
             "interval": openaq_sync.SYNC_INTERVAL,
             "stations": len(openaq_sync.STATIONS)
@@ -235,7 +240,7 @@ async def health_check():
     }
 
 
-# OPENAQ ENDPOINTS (for fixed sensors)
+# OPENAQ ENDPOINTS
 @app.post("/openaq/sync")
 async def trigger_sync():
     """Manually trigger OpenAQ sync."""
@@ -252,10 +257,23 @@ async def get_sync_status():
     return openaq_sync.get_status()
 
 
-# DATA INSERTION ENDPOINT
+# DATA ENDPOINTS
 @app.post("/add_data/")
 async def add_data(payload: InsertPollutionDataRequest):
+    """
+    Insert sensor data.
+    
+    Accepts data from: CityAirQ, WearAware, Forecast
+    (SPO-RO data comes from OpenAQ sync)
+    """
     try:
+        # Validate sensor type
+        if payload.sensor_type not in VALID_SENSOR_TYPES:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid sensor_type. Must be one of: {VALID_SENSOR_TYPES}"
+            )
+        
         timestamp_ms = payload.timestamp
         if timestamp_ms is None:
             ROMANIA_OFFSET_MS = 3 * 60 * 60 * 1000
@@ -293,6 +311,8 @@ async def add_data(payload: InsertPollutionDataRequest):
             "sensor_id": payload.sensor_id,
             "cache_cleared": True
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error adding data: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Error adding data: {str(e)}")
@@ -307,12 +327,22 @@ async def get_data(
     layers: Optional[List[str]] = Query(None),
     sensor_types: Optional[List[str]] = Query(None)
 ):
+    """
+    Get pollution data within radius of a point.
+    
+    sensor_types: SPO-RO, CityAirQ, WearAware, Forecast
+    """
     if not layers:
         layers = AVAILABLE_LAYERS
     if not sensor_types:
         sensor_types = ['CityAirQ', 'WearAware']
+    
+    # Validate sensor types
+    valid_types = [st for st in sensor_types if st in VALID_SENSOR_TYPES]
+    if not valid_types:
+        valid_types = ['CityAirQ', 'WearAware']
 
-    cache_key = generate_cache_key(latitude, longitude, radius, layers, sensor_types)
+    cache_key = generate_cache_key(latitude, longitude, radius, layers, valid_types)
     
     try:
         cached = redis_client.get(cache_key)
@@ -325,7 +355,7 @@ async def get_data(
 
     try:
         delta_lat, delta_lng = get_coordinate_deltas(radius, latitude)
-        params = (layers, latitude, delta_lat, longitude, delta_lng, sensor_types)
+        params = (layers, latitude, delta_lat, longitude, delta_lng, valid_types)
         results = fetch_data(params)
         
         try:
@@ -341,9 +371,10 @@ async def get_data(
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-# CACHE MANAGEMENT
+# CACHE ENDPOINTS
 @app.get("/cache/stats")
 async def cache_stats():
+    """Get Redis cache statistics."""
     try:
         info = redis_client.info("stats")
         memory = redis_client.info("memory")
@@ -361,6 +392,7 @@ async def cache_stats():
 
 @app.delete("/cache/clear")
 async def clear_cache():
+    """Clear all cached queries."""
     try:
         cleared = clear_all_caches()
         return {"cleared": cleared}

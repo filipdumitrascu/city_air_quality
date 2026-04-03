@@ -1,3 +1,22 @@
+"""
+Routing Service - Pollution-Aware Navigation for CityAirQ
+
+Two transport modes:
+- foot: A* pathfinding on pollution grid
+- bicycle: Google Routes API with pollution scoring
+
+Pollutants used for routing:
+- PM10: measured by all sensors (fixed, CityAirQ, WearAware)
+- PM2.5: measured by all sensors
+
+NO2 excluded because WearAware doesn't measure it (returns -1).
+Values of -1 are treated as missing and excluded from AQI calculation.
+
+Forecast integration:
+- When gaps exist in pollution data, requests predictions from forecast_service
+- Predictions are inserted to database for future queries
+"""
+
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -16,6 +35,7 @@ from foot.data_loader import PollutionDataLoader
 from foot.graph_builder import PollutionGraph
 from foot.pathfinding import AStarPathfinder
 from foot.utils import calculate_route_stats, HEURISTICS
+from foot.forecast_client import ForecastClient
 
 # Bicycle mode
 from bicycle.google_routes import GoogleRoutesClient
@@ -31,23 +51,35 @@ logger = logging.getLogger(__name__)
 cache_manager = None
 data_loader = None
 google_routes_client = None
+forecast_client = None
 
 
 # FASTAPI APPLICATION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global cache_manager, data_loader, google_routes_client
+    global cache_manager, data_loader, google_routes_client, forecast_client
     
     logger.info("Starting Routing Service...")
     
     cache_manager = CacheManager()
     data_loader = PollutionDataLoader()
     google_routes_client = GoogleRoutesClient()
+    forecast_client = ForecastClient()
     
     if google_routes_client.is_configured():
         logger.info("Google Routes API configured (bicycle mode available)")
     else:
         logger.warning("Google Routes API NOT configured")
+    
+    # Check forecast service
+    if forecast_client.enabled:
+        forecast_ok = await forecast_client.check_health()
+        if forecast_ok:
+            logger.info("Forecast Service available (model loaded)")
+        else:
+            logger.warning("Forecast Service not available or no model loaded")
+    else:
+        logger.info("Forecasting disabled")
     
     logger.info(f"Using pollutants: {ROUTING_POLLUTANTS}")
     logger.info("Routing Service ready")
@@ -141,7 +173,7 @@ async def calculate_route(request: RouteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 async def _calculate_foot_route(request: RouteRequest, start_time: float) -> RouteResponse:
-    """A* pathfinding on pollution grid"""
+    """A* pathfinding on pollution grid with forecast gap-filling"""
     
     # Check cache
     cache_key = cache_manager.generate_cache_key(
@@ -158,6 +190,7 @@ async def _calculate_foot_route(request: RouteRequest, start_time: float) -> Rou
     # Fetch pollution data
     config = get_config()
     bounds = config["bucharest_bounds"]
+    grid_resolution = config["grid_resolution"]
     
     pollution_data = await data_loader.fetch_area_pollution(
         bounds["lat_min"], bounds["lat_max"],
@@ -168,7 +201,50 @@ async def _calculate_foot_route(request: RouteRequest, start_time: float) -> Rou
     if not pollution_data:
         raise HTTPException(status_code=404, detail="No pollution data found")
     
-    logger.info(f"Fetched {len(pollution_data)} readings")
+    logger.info(f"Fetched {len(pollution_data)} readings from sensors")
+    
+    # Get existing coordinates for gap detection
+    existing_coords = set()
+    for reading in pollution_data:
+        lat = reading.get("latitude", 0)
+        lon = reading.get("longitude", 0)
+        grid_lat = round(lat / grid_resolution) * grid_resolution
+        grid_lon = round(lon / grid_resolution) * grid_resolution
+        existing_coords.add((round(grid_lat, 6), round(grid_lon, 6)))
+    
+    # Request predictions for gaps along route corridor
+    forecasted_count = 0
+    if forecast_client and forecast_client.enabled:
+        try:
+            predictions = await forecast_client.predict_for_route(
+                start=(request.start.lat, request.start.lon),
+                goal=(request.goal.lat, request.goal.lon),
+                existing_coords=existing_coords
+            )
+            
+            # Convert predictions to pollution_data format
+            for pred in predictions:
+                pollution_data.append({
+                    "sensor_type": "Forecast",
+                    "sensor_id": None,
+                    "latitude": pred.get("lat"),
+                    "longitude": pred.get("lon"),
+                    "pm10": pred.get("pm10", -1),
+                    "pm2_5": pred.get("pm2_5", -1),
+                    "no2": pred.get("no2", -1),
+                    "co": pred.get("co", -1),
+                    "pm1_0": -1,
+                    "co2": -1,
+                    "nh3": -1,
+                    "vocs": -1
+                })
+                forecasted_count += 1
+            
+            if forecasted_count > 0:
+                logger.info(f"Added {forecasted_count} forecasted points")
+                
+        except Exception as e:
+            logger.warning(f"Forecast request failed: {e}")
     
     # Build graph and find path
     graph = PollutionGraph(alpha=request.alpha)
@@ -211,6 +287,7 @@ async def _calculate_foot_route(request: RouteRequest, start_time: float) -> Rou
         "heuristic_used": request.heuristic,
         "transport_mode": "foot",
         "nodes_evaluated": pathfinder.nodes_evaluated,
+        "forecasted_points": forecasted_count,
         "cached": False
     }
     
