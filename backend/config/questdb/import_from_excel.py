@@ -1,20 +1,6 @@
-"""
-Import Excel data to QuestDB pollution_data table.
-
-Column order matches QuestDB schema:
-  sensor_type, sensor_id, timestamp, latitude, longitude, altitude,
-  humidity, pressure, temperature, co, co2, no2, nh3, pm1_0, pm2_5, pm10, vocs
-
-sensor_type values:
-  - CityAirQ   (mobile)
-  - WearAware  (mobile)
-  - SPO-RO     (fixed, EEA stations)
-  - Forecast   (predicted, ML)
-"""
-
 import sys
-import pandas as pd
 import psycopg2
+import pandas as pd
 
 # QuestDB connection
 conn = psycopg2.connect(

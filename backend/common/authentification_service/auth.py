@@ -5,8 +5,8 @@ from typing import Optional
 
 GOOGLE_TOKEN_INFO_URL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 
-INGEST_KEY = set(
-    key.strip() for key in os.getenv("INGEST_KEY", "").split(",") if key.strip()
+ACCESS_KEY = set(
+    key.strip() for key in os.getenv("ACCESS_KEY", "").split(",") if key.strip()
 )
 
 def verify_google_token(token: str) -> dict:
@@ -78,7 +78,7 @@ async def authorize(authorization: Optional[str] = Header(None, alias="Authoriza
         )
     
     # Check API key first (faster, no network call)
-    if token in INGEST_KEY:
+    if token in ACCESS_KEY:
         return {
             "type": "api_key",
             "email": f"sensor-{token[:8]}@cityairq.local"
@@ -86,15 +86,3 @@ async def authorize(authorization: Optional[str] = Header(None, alias="Authoriza
     
     # Fallback to Google OAuth
     return verify_google_token(token)
-
-async def optional_authorize(authorization: Optional[str] = Header(None, alias="Authorization")) -> Optional[dict]:
-    """
-    Optional authentication - returns None if no token provided.
-    """
-    if not authorization:
-        return None
-    
-    try:
-        return await authorize(authorization)
-    except HTTPException:
-        return None

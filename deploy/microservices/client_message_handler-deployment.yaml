@@ -20,11 +20,11 @@ spec:
         - containerPort: 8000
           name: http
         env:
-        - name: INGEST_KEY
+        - name: ACCESS_SECRET
           valueFrom:
             secretKeyRef:
-              name: ingest-secret
-              key: INGEST_KEY
+              name: access-secret
+              key: ACCESS_SECRET
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: /app/credentials.json
         - name: ROUTING_SERVICE_URL

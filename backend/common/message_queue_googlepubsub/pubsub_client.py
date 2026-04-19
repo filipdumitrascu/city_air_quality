@@ -75,7 +75,6 @@ class PubSubClientSubscriber:
             self.streaming_pull_future.cancel()
             logging.info(f"Subscriber {self.subscription_name} stopped")
 
-
 class PubSubClientPublisher:
     # Reusable publisher client (thread-safe)
     _publisher = None
@@ -98,9 +97,6 @@ class PubSubClientPublisher:
         
         Returns:
             str: Message ID of the published message
-        
-        Raises:
-            Exception: If publishing fails
         """
         publisher = PubSubClientPublisher._get_publisher()
         topic_path = publisher.topic_path(PROJECT_ID, topic_name)

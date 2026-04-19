@@ -46,9 +46,9 @@ kubectl create secret generic google-maps-secret \
     --from-file=GOOGLE_MAPS_API_KEY=google-maps-key.txt \
     --dry-run=client -o yaml | kubectl apply -f -
 
-# Ingest auth key (API for developers, no OAuth)
-kubectl create secret generic ingest-secret \
-    --from-file=INGEST_KEY=ingest-key.txt \
+# Auth key (API for developers, no OAuth)
+kubectl create secret generic access-secret \
+    --from-file=ACCESS_KEY=access-key.txt \
     --dry-run=client -o yaml | kubectl apply -f -
 
 # Fixed sensors API from OpenAQ
