@@ -116,7 +116,12 @@ gcloud container clusters create cityairq-standard \
 --zone=europe-central2-a
 ```
 
-### 7. Update Configuration Files
+### 7. Routes API
+1. Go to: https://console.cloud.google.com/apis/library?project=YOUR_PROJECT_ID
+
+2. Find and enable `Routes API`
+
+### 8. Update Configuration Files
 
 Update these files with your Project ID:
 
