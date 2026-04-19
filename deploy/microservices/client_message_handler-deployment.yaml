@@ -15,16 +15,16 @@ spec:
     spec:
       containers:
       - name: client-message-handler
-        image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-client_message_handler:latest
+        image: us-central1-docker.pkg.dev/cityairq/cityairq-images/cityairq-client_message_handler:latest
         ports:
         - containerPort: 8000
           name: http
         env:
-        - name: ACCESS_SECRET
+        - name: ACCESS_KEY
           valueFrom:
             secretKeyRef:
               name: access-secret
-              key: ACCESS_SECRET
+              key: ACCESS_KEY
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: /app/credentials.json
         - name: ROUTING_SERVICE_URL
@@ -34,7 +34,7 @@ spec:
         - name: REDIS_HOST
           value: "redis-service"
         - name: GCP_PROJECT_ID
-          value: "elite-totem-484208-e2"
+          value: "cityairq"
         volumeMounts:
         - name: credentials-volume
           mountPath: /app/credentials.json

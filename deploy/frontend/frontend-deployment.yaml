@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-frontend:latest
+        image: us-central1-docker.pkg.dev/cityairq/cityairq-images/cityairq-frontend:latest
         ports:
         - containerPort: 8080
         env:

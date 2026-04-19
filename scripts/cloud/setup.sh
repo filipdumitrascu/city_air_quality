@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-PROJECT_ID="elite-totem-484208-e2"
+PROJECT_ID="cityairq"
 CLUSTER_NAME="cityairq-standard"
 REGION="us-central1-a"
 SERVICE_ACCOUNT_KEY="../../deploy/credentials.json"

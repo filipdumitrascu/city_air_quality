@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: data-provider-service
-        image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-data_provider_service:latest
+        image: us-central1-docker.pkg.dev/cityairq/cityairq-images/cityairq-data_provider_service:latest
         ports:
         - containerPort: 8001
           name: http
@@ -27,7 +27,7 @@ spec:
         - name: REDIS_HOST
           value: "redis-service"
         - name: GCP_PROJECT_ID
-          value: "elite-totem-484208-e2"
+          value: "cityairq"
         volumeMounts:
         - name: credentials-volume
           mountPath: /app/credentials.json

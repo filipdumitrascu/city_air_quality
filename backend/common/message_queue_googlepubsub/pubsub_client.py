@@ -6,7 +6,7 @@ import os
 from typing import Callable, Any
 
 # GCP Project ID from environment or default
-PROJECT_ID = os.getenv("GCP_PROJECT_ID", "elite-totem-484208-e2")
+PROJECT_ID = os.getenv("GCP_PROJECT_ID", "cityairq")
 
 
 class PubSubClientSubscriber:

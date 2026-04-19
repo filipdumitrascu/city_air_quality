@@ -1,6 +1,6 @@
 #!/bin/bash
 # Kubernetes Clean Script
-# Removes all deployments from cluster
+# Removes deployments from cluster with option to preserve databases
 
 set -e
 
@@ -10,6 +10,11 @@ cd "$SCRIPT_DIR"
 
 echo "Deleting CityAirQ from Kubernetes..."
 echo ""
+
+# Ask about databases
+DELETE_DBS="n"
+read -p "Delete databases (QuestDB + Redis)? This will ERASE ALL DATA! [y/N]: " DELETE_DBS
+DELETE_DBS="${DELETE_DBS:-n}"
 
 cd ../../deploy
 
@@ -35,17 +40,28 @@ kubectl delete -f microservices/forecast-service-deployment.yaml --ignore-not-fo
 echo "Deleting Database Service..."
 kubectl delete -f microservices/database_service-deployment.yaml --ignore-not-found=true
 
-echo "Deleting QuestDB..."
-kubectl delete -f dbs/questdb-deployment.yaml --ignore-not-found=true
+# Conditionally delete databases
+if [[ "$DELETE_DBS" =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "Deleting databases (DATA WILL BE LOST)..."
+    
+    echo "  - QuestDB..."
+    kubectl delete -f dbs/questdb-deployment.yaml --ignore-not-found=true
+    
+    echo "  - Redis..."
+    kubectl delete -f dbs/redis-deployment.yaml --ignore-not-found=true
+    
+    echo ""
+    echo "Deleting secrets..."
+    kubectl delete secret credentials-secret --ignore-not-found=true --namespace=default
+    
+    echo ""
+    echo "All services and databases deleted."
+else
+    echo ""
+    echo "Microservices deleted. Databases preserved (QuestDB + Redis)."
+fi
 
-echo "Deleting Redis..."
-kubectl delete -f dbs/redis-deployment.yaml --ignore-not-found=true
-
-echo "Deleting secrets..."
-kubectl delete secret credentials-secret --ignore-not-found=true --namespace=default
-
-echo ""
-echo "All services deleted"
 echo ""
 echo "Remaining resources:"
 kubectl get all --namespace=default

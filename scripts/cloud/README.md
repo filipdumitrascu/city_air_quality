@@ -88,13 +88,21 @@ gcloud services enable container.googleapis.com \
 
 ### 6. Create Kubernetes Cluster
 ```bash
+gcloud auth login
+```
+
+```bash
+gcloud config set project YOUR_PROJECT_ID
+```
+
+```bash
 gcloud container clusters create cityairq-standard \
     --zone=us-central1-a \
     --machine-type=e2-medium \
     --num-nodes=2 \
     --disk-size=20 \
     --enable-autoscaling \
-    --min-nodes=2 \
+    --min-nodes=1 \
     --max-nodes=3 \
     --project=YOUR_PROJECT_ID
 ```

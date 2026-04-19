@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: database-service
-        image: us-central1-docker.pkg.dev/elite-totem-484208-e2/cityairq-images/cityairq-database_service:latest
+        image: us-central1-docker.pkg.dev/cityairq/cityairq-images/cityairq-database_service:latest
         ports:
         - containerPort: 8000
           name: http
@@ -52,7 +52,7 @@ spec:
         - name: REDIS_HOST
           value: "redis-service"
         - name: GCP_PROJECT_ID
-          value: "elite-totem-484208-e2"
+          value: "cityairq"
         resources:
           requests:
             memory: "128Mi"
