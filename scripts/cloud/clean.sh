@@ -43,12 +43,12 @@ kubectl delete -f microservices/database_service-deployment.yaml --ignore-not-fo
 # Conditionally delete databases
 if [[ "$DELETE_DBS" =~ ^[Yy]$ ]]; then
     echo ""
-    echo "Deleting databases (DATA WILL BE LOST)..."
+    echo "Deleting databases"
     
-    echo "  - QuestDB..."
+    echo "QuestDB..."
     kubectl delete -f dbs/questdb-deployment.yaml --ignore-not-found=true
     
-    echo "  - Redis..."
+    echo "Redis..."
     kubectl delete -f dbs/redis-deployment.yaml --ignore-not-found=true
     
     echo ""

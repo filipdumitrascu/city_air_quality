@@ -79,5 +79,5 @@ Before deleting cluster:
 ## External IPs
 
 - `frontend` : http://35.188.2.234
-- `grafana` : http://35.192.10.90:80
+- `grafana` : http://35.192.10.90
 (username: admin  password: cityairq-admin)

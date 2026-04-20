@@ -107,7 +107,7 @@ gcloud container clusters create cityairq-standard \
     --project=YOUR_PROJECT_ID
 ```
 
-**Cost**: ~$18/week for this configuration
+**Cost**: between ~$18 and ~$23 per week for this configuration
 
 **For lower latency in Europe**, use:
 ```bash
@@ -116,10 +116,40 @@ gcloud container clusters create cityairq-standard \
 --zone=europe-central2-a
 ```
 
-### 7. Routes API
+### 7. APIs
+#### a. Routes
 1. Go to: https://console.cloud.google.com/apis/library?project=YOUR_PROJECT_ID
 
 2. Find and enable `Routes API`
+
+3. Go to: https://console.cloud.google.com/apis/credentials?authuser=1&project=YOUR_PROJECT_ID
+
+4. Show key ad copy paste it to `deploy/google-maps-key.txt`
+
+#### b. Access (for ingest)
+1. Generate a random 64 chars string
+
+2. Paste it in `deploy/access-key.txt`
+
+3. Use it in commands such as:
+```bash
+curl -X POST http://EXTERNAL_IP:8000/ingest/ \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer USE_IT_HERE" \
+  -d '{
+    "sensor_type":"CityAirQ",
+    "sensor_id":"001",
+    "latitude":44.4268,
+    "longitude":26.1025,
+    "altitude": 10,
+    "pm10": 43
+   }'
+```
+
+#### c. Fixed sensors
+1. Go to https://explore.openaq.org/account
+
+2. Copy and paste the key to `deploy/fixed-sensors-key.txt`
 
 ### 8. Update Configuration Files
 
@@ -264,28 +294,3 @@ gcloud container clusters resize cityairq-standard \
 ```
 
 ---
-
-## Checklist for New Project
-
-When setting up on a new Google Cloud account:
-
-- [ ] Create new project
-- [ ] Enable APIs (Kubernetes, Artifact Registry, Pub/Sub, Compute)
-- [ ] Create service account with roles:
-  - [ ] Kubernetes Engine Admin
-  - [ ] Artifact Registry Administrator
-  - [ ] Pub/Sub Publisher
-  - [ ] Pub/Sub Subscriber
-  - [ ] Storage Admin
-  - [ ] Storage Object Admin
-  - [ ] Service Account User
-- [ ] Download service account key → `deploy/credentials.json`
-- [ ] Create Artifact Registry repository
-- [ ] Create Pub/Sub topics and subscriptions
-- [ ] Create Kubernetes cluster
-- [ ] Update `PROJECT_ID` in:
-  - [ ] `scripts/cloud/setup.sh`
-  - [ ] `pubsub_client.py`
-  - [ ] All deployment YAML files
-  - [ ] `docker-compose.buildx.yaml`
-- [ ] Run deployment steps

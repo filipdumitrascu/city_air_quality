@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import List, Callable
 
 SYNC_INTERVAL = int(os.getenv('OPENAQ_SYNC_INTERVAL', '3600'))
-READINGS_TO_KEEP = int(os.getenv('OPENAQ_READINGS_TO_KEEP', '5'))
+READINGS_TO_KEEP = int(os.getenv('OPENAQ_READINGS_TO_KEEP', '3'))
 API_KEY = os.getenv('OPENAQ_API_KEY', '')
 BASE_URL = "https://api.openaq.org/v3"
 
@@ -211,12 +211,18 @@ async def run_sync(
     
     logging.info(f"OpenAQ: Done - {total_inserted} inserted, {total_errors} errors, {total_cleaned} cleaned")
     
-    # Trigger gap fill for visualization
-    if ENABLE_GAP_FILL and total_inserted > 0:
+    # Trigger gap fill for visualization (only every 6 hours: 0, 6, 12, 18 UTC)
+    current_hour = datetime.utcnow().hour
+    should_fill_gaps = ENABLE_GAP_FILL and total_inserted > 0 and (current_hour % 6 == 0)
+    
+    if should_fill_gaps:
+        logging.info(f"OpenAQ: Gap fill triggered (hour={current_hour}, every 6h)")
         gaps_filled = await trigger_gap_fill()
         sync_status['gaps_filled'] = gaps_filled
         if gaps_filled > 0:
             clear_cache_func()  # Clear cache again after gap fill
+    elif ENABLE_GAP_FILL and total_inserted > 0:
+        logging.info(f"OpenAQ: Skipping gap fill (hour={current_hour}, next at hour divisible by 6)")
     
     sync_status['running'] = False
 
