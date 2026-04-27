@@ -1,12 +1,3 @@
-"""
-OpenAQ Data Sync Module
-
-Background task that periodically downloads pollution data from 
-OpenAQ API for fixed stations in Bucharest.
-
-After sync, triggers forecast_service to fill gaps for visualization.
-"""
-
 import os
 import logging
 import asyncio
@@ -32,17 +23,8 @@ STATIONS = {
     2163086: {'name': 'B-4', 'code': 'B-4'},   # no2, pm10, so2
     2163084: {'name': 'B-5', 'code': 'B-5'},   # co, no2, pm10, so2
     2163080: {'name': 'B-6', 'code': 'B-6'},   # co, no2, pm10
-    2163092: {'name': 'B-7', 'code': 'B-7'},   # no2, o3, pm10, pm25, so2 (Magurele)
+    2163092: {'name': 'B-7', 'code': 'B-7'},   # no2, o3, pm10, pm25, so2
     2163068: {'name': 'B-8', 'code': 'B-8'},   # no2, o3, pm10, pm25, so2
-}
-
-PARAM_MAP = {
-    'pm10': 'pm10',
-    'pm25': 'pm2_5',
-    'no2': 'no2',
-    'co': 'co',
-    'o3': 'o3',
-    'so2': 'so2',
 }
 
 sync_status = {
@@ -108,10 +90,12 @@ async def fetch_and_process_station(location_id: int) -> List[dict]:
         try:
             param_info = sensor.get('parameter', {})
             param_name = param_info.get('name', '').lower()
-            field_name = PARAM_MAP.get(param_name)
             
-            if not field_name:
+            if not param_name:
                 continue
+
+            if param_name == "pm25":
+                param_name = "pm2_5"
             
             latest = sensor.get('latest', {})
             if not latest:
@@ -142,7 +126,7 @@ async def fetch_and_process_station(location_id: int) -> List[dict]:
                 reading['latitude'] = coords.get('latitude')
                 reading['longitude'] = coords.get('longitude')
             
-            reading[field_name] = value
+            reading[param_name] = value
             pollutant_count += 1
             
         except Exception as e:

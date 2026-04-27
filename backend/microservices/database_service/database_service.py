@@ -1,21 +1,23 @@
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
-from schemas import InsertPollutionDataRequest
-from db import insert_data, fetch_data, init_db, close_db, get_db_connection, release_db_connection, VALID_SENSOR_TYPES
+from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
 from typing import List, Optional
+from schemas import InsertPollutionDataRequest
+from db import insert_data, fetch_data, init_db, close_db, get_db_connection, \
+    release_db_connection, VALID_SENSOR_TYPES
+from openaq_sync import run_sync, get_status, sync_status, sync_loop, \
+    SYNC_INTERVAL, STATIONS
 import logging
 import os
+import time
+import json
+import asyncio
 import math
 import redis
-import json
 import hashlib
-import asyncio
-import time
-import openaq_sync
 
 
-# Redis connection
+# Redis connection for caching
 redis_client = redis.Redis(
     host=os.getenv('REDIS_HOST', 'redis-service'),
     port=int(os.getenv('REDIS_PORT', 6379)),
@@ -25,23 +27,24 @@ redis_client = redis.Redis(
     socket_timeout=5
 )
 
+# Logging to stdout only (visible via kubectl logs)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
 AVAILABLE_LAYERS = [
-    "pm10", "pm2_5", "pm1_0",
-    "no2", "co", "co2", "nh3", "vocs",
-    "temperature", "humidity", "pressure", "altitude"
+    "pm10", "pm2_5", "pm1_0",  # Particulate matter
+    "no2", "co", "co2", "nh3", "vocs",  # Gases
+    "temperature", "humidity", "pressure", "altitude"  # Weather
 ]
 
 
-# HELPER FUNCTIONS
+# Helper functions
 def generate_cache_key(latitude: float, longitude: float, radius: float, 
                        layers: List[str], sensor_types: List[str] = None) -> str:
     """Generate unique cache key for query."""
-    sensor_types_sorted = sorted(sensor_types) if sensor_types else ['SPO-RO', 'CityAirQ', 'WearAware']
+    sensor_types_sorted = sorted(sensor_types) if sensor_types else ['SPO-RO', 'CityAirQ', 'WearAware', 'Forecast']
     layers_sorted = sorted(layers) if layers else 'all'
     
     key_data = json.dumps({
@@ -58,8 +61,10 @@ def get_coordinate_deltas(radius_km: float, latitude_deg: float):
     """Convert radius in km to lat/lon deltas."""
     delta_lat = radius_km / 111.32
     lat_rad = math.radians(latitude_deg)
+
     km_per_deg_lng = 111.32 * math.cos(lat_rad)
     delta_lng = radius_km / km_per_deg_lng if km_per_deg_lng > 0 else radius_km / 111.32
+
     return delta_lat, delta_lng
 
 def clear_all_caches() -> int:
@@ -80,8 +85,6 @@ def clear_all_caches() -> int:
     
     return total_cleared
 
-
-# OPENAQ HELPER FUNCTIONS
 def insert_openaq_reading(reading: dict) -> bool:
     """Insert a reading from OpenAQ."""
     try:
@@ -113,54 +116,6 @@ def insert_openaq_reading(reading: dict) -> bool:
         logging.error(f"OpenAQ insert error: {e}")
         return False
 
-def cleanup_old_readings(station_id: str, keep_count: int = 3) -> int:
-    """Delete old readings for a station, keeping only latest N."""
-    conn = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get timestamps of readings to keep
-        query = """
-            SELECT timestamp FROM pollution_data
-            WHERE sensor_type = 'SPO-RO' AND sensor_id = %s
-            ORDER BY timestamp DESC
-            LIMIT %s
-        """
-        cursor.execute(query, (station_id, keep_count))
-        rows = cursor.fetchall()
-        
-        if len(rows) < keep_count:
-            cursor.close()
-            return 0
-        
-        cutoff_timestamp = rows[-1][0]
-        
-        # Count how many will be deleted
-        count_query = """
-            SELECT COUNT(*) FROM pollution_data
-            WHERE sensor_type = 'SPO-RO' AND sensor_id = %s AND timestamp < %s
-        """
-        cursor.execute(count_query, (station_id, cutoff_timestamp))
-        count = cursor.fetchone()[0]
-        
-        # Note: QuestDB doesn't support DELETE with WHERE on non-partitioned columns
-        # This cleanup only works if data is partitioned by day
-        # For now, we log the count but can't actually delete
-        cursor.close()
-        
-        if count > 0:
-            logging.debug(f"Station {station_id} has {count} old readings (cleanup skipped - QuestDB limitation)")
-        
-        return 0  # Return 0 since we can't actually delete
-        
-    except Exception as e:
-        logging.error(f"Cleanup error for {station_id}: {e}")
-        return 0
-    finally:
-        if conn:
-            release_db_connection(conn)
-
 
 # FASTAPI APPLICATION
 @asynccontextmanager
@@ -181,9 +136,9 @@ async def lifespan(app: FastAPI):
     
     # Start OpenAQ sync background task
     sync_task = asyncio.create_task(
-        openaq_sync.sync_loop(insert_openaq_reading, cleanup_old_readings, clear_all_caches)
+        sync_loop(insert_openaq_reading, cleanup_old_readings, clear_all_caches)
     )
-    logging.info(f"OpenAQ sync started (interval: {openaq_sync.SYNC_INTERVAL}s)")
+    logging.info(f"OpenAQ sync started (interval: {SYNC_INTERVAL}s)")
     logging.info(f"Valid sensor types: {VALID_SENSOR_TYPES}")
     
     yield
@@ -207,6 +162,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Prometheus metrics
 Instrumentator().instrument(app).expose(app)
 
 
@@ -219,8 +175,8 @@ async def root():
         "status": "running",
         "sensor_types": VALID_SENSOR_TYPES,
         "openaq": {
-            "interval": openaq_sync.SYNC_INTERVAL,
-            "stations": len(openaq_sync.STATIONS)
+            "interval": SYNC_INTERVAL,
+            "stations": len(STATIONS)
         }
     }
 
@@ -236,7 +192,7 @@ async def health_check():
         "status": "healthy",
         "service": "database_service",
         "redis": "connected" if redis_ok else "disconnected",
-        "openaq": openaq_sync.sync_status
+        "openaq": sync_status
     }
 
 
@@ -244,20 +200,20 @@ async def health_check():
 @app.post("/openaq/sync")
 async def trigger_sync():
     """Manually trigger OpenAQ sync."""
-    if openaq_sync.sync_status['running']:
+    if sync_status['running']:
         raise HTTPException(status_code=409, detail="Sync already running")
     
     asyncio.create_task(
-        openaq_sync.run_sync(insert_openaq_reading, cleanup_old_readings, clear_all_caches)
+        run_sync(insert_openaq_reading, cleanup_old_readings, clear_all_caches)
     )
-    return {"message": "Sync started", "status": openaq_sync.sync_status}
+    return {"message": "Sync started", "status": sync_status}
 
 @app.get("/openaq/status")
 async def get_sync_status():
-    return openaq_sync.get_status()
+    return get_status()
 
 
-# DATA ENDPOINTS
+# DATA INGEST ENDPOINT
 @app.post("/add_data/")
 async def add_data(payload: InsertPollutionDataRequest):
     """
