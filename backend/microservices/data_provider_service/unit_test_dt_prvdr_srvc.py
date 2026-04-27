@@ -23,7 +23,7 @@ with patch('common.message_queue_googlepubsub.pubsub_client.pubsub_v1.Subscriber
 from httpx import AsyncClient
 
 
-# TEST HELPERS
+# Test helpers
 class DummyMessage:
     """Mock PubSub message for testing"""
     def __init__(self, data):
@@ -38,7 +38,7 @@ class DummyMessage:
         self.nack_called = True
 
 
-# TEST DATA (matching pollution_data schema)
+# Test data
 valid_query_payload = {
     "latitude": 44.4268,
     "longitude": 26.1025,
@@ -109,7 +109,7 @@ async def test_root_endpoint():
 @patch("data_provider_service.PubSubClientPublisher.publish_message")
 async def test_process_message_success(mock_publish, mock_get_data, mock_redis):
     """Test successful message processing and data retrieval"""
-    mock_redis.get.return_value = None  # Cache miss
+    mock_redis.get.return_value = None
     mock_get_data.return_value = json.dumps(mock_database_response)
 
     message = DummyMessage(data=json.dumps(valid_query_payload).encode("utf-8"))

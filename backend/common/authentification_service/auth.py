@@ -14,10 +14,7 @@ def verify_google_token(token: str) -> dict:
     Validate a Google OAuth 2.0 Access Token.
     
     Returns:
-        dict: User info containing email, sub (user ID), etc.
-    
-    Raises:
-        HTTPException: 401 if token is invalid or expired
+        dict: User info containing email, user ID, etc.
     """
     try:
         response = requests.get(
@@ -30,7 +27,7 @@ def verify_google_token(token: str) -> dict:
             status_code=503, 
             detail=f"Authentication service unavailable: {str(e)}"
         )
-    
+
     if response.status_code != 200:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
@@ -53,36 +50,33 @@ async def authorize(authorization: Optional[str] = Header(None, alias="Authoriza
     
     Returns:
         dict: Authenticated entity info
-    
-    Raises:
-        HTTPException: 401 if missing/invalid authorization
     """
     if not authorization:
         raise HTTPException(
             status_code=401, 
             detail="Missing Authorization header"
         )
-    
+
     if not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=401, 
             detail="Invalid Authorization header format. Expected: Bearer <token>"
         )
-    
+
     token = authorization.replace("Bearer ", "").strip()
-    
+
     if not token:
         raise HTTPException(
             status_code=401, 
             detail="Empty token provided"
         )
-    
+
     # Check API key first (faster, no network call)
     if token in ACCESS_KEY:
         return {
             "type": "api_key",
             "email": f"sensor-{token[:8]}@cityairq.local"
         }
-    
+
     # Fallback to Google OAuth
     return verify_google_token(token)

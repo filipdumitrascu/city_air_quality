@@ -1,12 +1,3 @@
-"""
-Client Message Handler - API Gateway for CityAirQ
-
-Main entry point for all client requests. Routes to appropriate services:
-- /ingest/ -> Ingest Service (via PubSub) - REQUIRES AUTH
-- /results/ -> Data Provider Service (via PubSub) - No auth required
-- /route/ -> Routing Service (via HTTP) - No auth required
-"""
-
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -44,16 +35,11 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# REQUEST MODELS (matching pollution_data schema)
 # Romania timezone offset (GMT+3 during summer, GMT+2 during winter)
 ROMANIA_OFFSET_MS = 3 * 60 * 60 * 1000  # 3 hours in milliseconds
 
-def get_current_timestamp_ms() -> int:
-    """Get current Unix timestamp in milliseconds, adjusted for Romania (GMT+3)."""
-    import time
-    return int(time.time() * 1000) + ROMANIA_OFFSET_MS
 
-
+# Payloads
 class IngestPayload(BaseModel):
     """
     Payload for ingesting sensor data into pollution_data table.
@@ -69,35 +55,35 @@ class IngestPayload(BaseModel):
     """
     # Required fields
     sensor_type: Literal["CityAirQ", "WearAware", "SPO-RO", "Forecast"] = Field(
-        ..., description="Sensor type: CityAirQ, WearAware, SPO-RO, or Forecast"
-    )
+        ..., description="Sensor type: CityAirQ, WearAware, SPO-RO, or Forecast")
+
     sensor_id: Optional[str] = Field(
-        default=None, description="Sensor identifier (e.g., '001'). None for Forecast."
-    )
+        default=None, description="Sensor identifier (e.g., '001'). None for Forecast.")
+
     timestamp: Optional[int] = Field(
-        default=None, description="Unix timestamp in milliseconds. Default: current time."
-    )
+        default=None, description="Unix timestamp in milliseconds. Default: current time.")
+
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
-    
+
     # Optional - Weather data (BME680 sensor)
     altitude: Optional[float] = Field(default=-1, description="Altitude in meters")
     humidity: Optional[float] = Field(default=-1, description="Relative humidity %")
     pressure: Optional[float] = Field(default=-1, description="Atmospheric pressure hPa")
     temperature: Optional[float] = Field(default=-1, description="Temperature in Celsius")
-    
+
     # Optional - Gas sensors
     co: Optional[float] = Field(default=-1, description="Carbon monoxide (MICS sensor)")
     co2: Optional[float] = Field(default=-1, description="Carbon dioxide (MHZ19/STCC44)")
     no2: Optional[float] = Field(default=-1, description="Nitrogen dioxide (MICS sensor)")
     nh3: Optional[float] = Field(default=-1, description="Ammonia (MICS sensor)")
     vocs: Optional[float] = Field(default=-1, description="Volatile organic compounds (BME680)")
-    
+
     # Optional - Particulate matter (PM sensor / BMV080)
     pm1_0: Optional[float] = Field(default=-1, description="PM1.0 concentration ug/m3")
     pm2_5: Optional[float] = Field(default=-1, description="PM2.5 concentration ug/m3")
     pm10: Optional[float] = Field(default=-1, description="PM10 concentration ug/m3")
-    
+
     # Convert None values to -1 for optional numeric fields
     @field_validator('altitude', 'humidity', 'pressure', 'temperature', 
                      'co', 'co2', 'no2', 'nh3', 'vocs', 'pm1_0', 'pm2_5', 'pm10', 
@@ -106,26 +92,24 @@ class IngestPayload(BaseModel):
     def none_to_default(cls, v):
         return -1 if v is None else v
 
-
 class ResultsPayload(BaseModel):
     """
     Payload for querying pollution data.
     
     Required: latitude, longitude, radius
-    Optional: sensor_types (default: mobile), layers (default: all)
+    Optional: sensor_types (default: CityAirQ", "WearAware), layers (default: all)
     """
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
     radius: float = Field(..., gt=0, description="Search radius in km")
     sensor_types: Optional[List[str]] = Field(
         default=["CityAirQ", "WearAware"],
-        description="'CityAirQ', 'WearAware', 'SPO-RO', 'Forecast'"
-    )
+        description="'CityAirQ', 'WearAware', 'SPO-RO', 'Forecast'")
+
     layers: Optional[List[str]] = Field(
         default=None,
         description="Pollutant layers to return: 'pm10', 'pm2_5', 'no2', etc. None = all"
     )
-
 
 class RoutePayload(BaseModel):
     """
@@ -139,13 +123,13 @@ class RoutePayload(BaseModel):
     alpha: float = Field(default=1, ge=0, le=1, description="0=shortest, 1=cleanest")
     sensor_types: Optional[List[str]] = Field(
         default=["CityAirQ", "WearAware", "SPO-RO", "Forecast"],
-        description="'CityAirQ', 'WearAware', 'SPO-RO' or Forecast"
-    )
+        description="'CityAirQ', 'WearAware', 'SPO-RO' or Forecast")
+
     transport_mode: str = Field(default="bicycle", description="'foot' or 'bicycle'")
     heuristic: str = Field(default="haversine", description="A* heuristic for foot mode")
 
 
-# HELPER FUNCTIONS
+# Helper functions
 def generate_cache_key(payload: dict) -> str:
     """Generate unique cache key from query payload."""
     sensor_types = payload.get('sensor_types', ['CityAirQ', 'WearAware', 'SPO-RO', 'Forecast'])
@@ -167,9 +151,15 @@ def generate_cache_key(payload: dict) -> str:
     hash_hex = hashlib.md5(key_data.encode()).hexdigest()
     return f"client_query:{hash_hex}"
 
+def get_current_timestamp_ms() -> int:
+    """Get current Unix timestamp in milliseconds, adjusted for Romania (GMT+3)."""
+    return int(time.time() * 1000) + ROMANIA_OFFSET_MS
+
+
 # Response queue for PubSub request-response pattern
 response_queue = Queue()
 
+# PubSub message handler
 async def process_results_message(message):
     """Callback for results response from Data Provider Service."""
     try:
@@ -181,7 +171,7 @@ async def process_results_message(message):
         logging.error(f"Error processing message: {str(e)}")
         message.nack()
 
-# PubSub subscriber for results responses
+# PubSub subscriber
 results_subscriber = PubSubClientSubscriber("results_response_messages-sub", process_results_message)
 
 
@@ -253,14 +243,14 @@ async def ingest_data(
     """
     try:
         data = payload.model_dump()
-        
+
         # Set timestamp to current time if not provided
         if data.get('timestamp') is None:
             data['timestamp'] = get_current_timestamp_ms()
             logging.info(f"Using current timestamp: {data['timestamp']}")
-        
+
         data['submitted_by'] = user.get('email')
-        
+
         PubSubClientPublisher.publish_message("ingest_service_messages", data)
         logging.info(f"Ingest from {user.get('email')} for {payload.sensor_type}/{payload.sensor_id}")
 
@@ -293,17 +283,17 @@ async def get_results(payload: ResultsPayload):
     """
     query = payload.model_dump()
     cache_key = generate_cache_key(query)
-    
+
     # Check cache
     try:
         cached_result = redis_client.get(cache_key)
         if cached_result:
             logging.info(f"Cache HIT: {cache_key}")
-            return {"data": json.loads(cached_result), "cached": True}
+            return {"data": json.loads(cached_result), "cache hit": True}
         logging.info(f"Cache MISS: {cache_key}")
     except Exception as e:
         logging.warning(f"Redis error: {e}")
-    
+
     # Query via PubSub
     try:
         PubSubClientPublisher.publish_message("results_service_messages", query)
@@ -335,7 +325,7 @@ async def get_results(payload: ResultsPayload):
         except Exception as e:
             logging.warning(f"Failed to cache: {e}")
         
-        return {"data": response_data, "cached": False}
+        return {"data": response_data, "cache hit": False}
         
     except HTTPException:
         raise
@@ -386,7 +376,7 @@ async def calculate_route(payload: RoutePayload):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-# CACHE MANAGEMENT ENDPOINTS
+# CACHE ENDPOINTS
 @app.get("/cache/stats")
 async def cache_stats():
     try:
@@ -406,7 +396,6 @@ async def cache_stats():
         }
     except Exception as e:
         return {"connected": False, "error": str(e)}
-
 
 @app.delete("/cache/clear")
 async def clear_cache():

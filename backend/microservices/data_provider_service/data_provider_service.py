@@ -1,10 +1,10 @@
 from fastapi import HTTPException, FastAPI
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
-import asyncio
 import logging
 import os
 import json
+import asyncio
 import redis
 import hashlib
 
@@ -28,7 +28,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Available pollution layers matching pollution_data schema
 AVAILABLE_LAYERS = [
     "pm10", "pm2_5", "pm1_0",  # Particulate matter
     "no2", "co", "co2", "nh3", "vocs",  # Gases
@@ -59,7 +58,7 @@ def generate_cache_key(query_params: dict) -> str:
     return f"provider_query:{hash_hex}"
 
 
-# PUBSUB MESSAGE HANDLER
+# PubSub message handler
 async def process_message(message):
     """
     Process incoming query requests from PubSub with Redis caching.
@@ -79,7 +78,7 @@ async def process_message(message):
         logging.info(f"Received query: lat={decoded_message.get('latitude')}, "
                      f"lon={decoded_message.get('longitude')}, "
                      f"radius={decoded_message.get('radius')}")
-        
+
         # Acknowledge message to PubSub
         message.ack()
 
@@ -88,8 +87,8 @@ async def process_message(message):
         if not selected_layers:
             selected_layers = AVAILABLE_LAYERS
         decoded_message["layers"] = selected_layers
-        
-        # Handle sensor_types - default to mobile if not specified
+
+        # Handle sensor_types - default to CityAirQ, WearAware if not specified
         sensor_types = decoded_message.get("sensor_types")
         if not sensor_types:
             sensor_types = ["CityAirQ", "WearAware"]
@@ -97,7 +96,7 @@ async def process_message(message):
 
         # Redis cache check
         cache_key = generate_cache_key(decoded_message)
-        
+
         try:
             cached_result = redis_client.get(cache_key)
             if cached_result:
@@ -113,35 +112,34 @@ async def process_message(message):
         # Query database (Cache miss)
         try:
             response = await get_data_from_database(decoded_message)
-            
+
             # Cache result
             try:
                 redis_client.setex(cache_key, 240, response)
                 logging.info(f"Cached result: {cache_key} (TTL: 240s)")
             except Exception as e:
                 logging.warning(f"Failed to cache result: {e}")
-            
+
             # Publish response back to Client Message Handler
             PubSubClientPublisher.publish_message("results_response_messages", response)
             logging.info("Response published to results_response_messages")
-            
+
         except HTTPException as e:
             logging.error(f"Database error: {e.detail}")
             PubSubClientPublisher.publish_message("results_response_messages", {
                 "error": e.detail, 
                 "status_code": e.status_code
             })
-            
+
     except Exception as e:
         logging.error(f"Error processing message: {str(e)}")
         message.nack()
-
 
 # PubSub subscriber
 results_subscriber = PubSubClientSubscriber("results_service_messages-sub", process_message)
 
 
-# Fast API
+# FASTAPI APPLICATION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - start subscriber on startup."""
@@ -159,7 +157,6 @@ async def lifespan(app: FastAPI):
     results_subscriber.stop()
     logging.info("Data Provider Service shutting down")
 
-
 app = FastAPI(
     title="Data Provider Service",
     description="Query handler for pollution data with Redis caching",
@@ -167,11 +164,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Prometheus metrics for monitoring
+# Prometheus metrics
 Instrumentator().instrument(app).expose(app)
 
 
-# ENDPOINTS
+# HEALTH ENDPOINTS
 @app.get("/")
 async def root():
     return {
@@ -182,7 +179,6 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check for Kubernetes probes."""
     redis_ok = False
     try:
         redis_ok = redis_client.ping()
@@ -195,6 +191,8 @@ async def health_check():
         "redis": "connected" if redis_ok else "disconnected"
     }
 
+
+# CACHE ENDPOINTS
 @app.get("/cache/stats")
 async def cache_stats():
     """Get Redis cache statistics."""

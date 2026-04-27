@@ -3,9 +3,8 @@ import sys
 import os
 import json
 from unittest.mock import patch, AsyncMock, MagicMock
-from datetime import datetime, timezone
 
-# Setup mocks before imports
+# Mock Google Cloud modules before importing app
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 sys.modules['google'] = MagicMock()
@@ -24,7 +23,7 @@ with patch('common.message_queue_googlepubsub.pubsub_client.pubsub_v1.Subscriber
 from httpx import AsyncClient
 
 
-# TEST HELPERS
+# Test helpers
 class DummyMessage:
     """Mock PubSub message for testing"""
     def __init__(self, data):
@@ -39,7 +38,7 @@ class DummyMessage:
         self.nack_called = True
 
 
-# TEST DATA (matching pollution_data schema)
+# Test data
 valid_payload_full = {
     "sensor_type": "CityAirQ",
     "sensor_id": "001",
@@ -91,7 +90,6 @@ valid_payload_wearaware = {
 }
 
 
-
 # HEALTH ENDPOINT TESTS
 @pytest.mark.asyncio
 async def test_health_check():
@@ -129,7 +127,7 @@ async def test_process_message_success_full(mock_send):
     assert message.nack_called is False
     
     mock_send.assert_awaited_once()
-    
+
     # Verify data passed to database
     args = mock_send.call_args[0][0]
     assert args["sensor_id"] == "001"
@@ -149,7 +147,7 @@ async def test_process_message_success_minimal(mock_send):
 
     assert message.ack_called is True
     mock_send.assert_awaited_once()
-    
+
     args = mock_send.call_args[0][0]
     assert args["sensor_id"] == "005"
     assert args["latitude"] == 44.4268
@@ -165,7 +163,7 @@ async def test_process_message_wearaware_sensor(mock_send):
     await process_message(message)
 
     assert message.ack_called is True
-    
+
     args = mock_send.call_args[0][0]
     assert args["sensor_id"] == "003"
     assert args["pm10"] == 35.0

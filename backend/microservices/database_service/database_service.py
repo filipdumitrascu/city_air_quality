@@ -3,8 +3,7 @@ from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
 from typing import List, Optional
 from schemas import InsertPollutionDataRequest
-from db import insert_data, fetch_data, init_db, close_db, get_db_connection, \
-    release_db_connection, VALID_SENSOR_TYPES
+from db import insert_data, fetch_data, init_db, close_db, VALID_SENSOR_TYPES
 from openaq_sync import run_sync, get_status, sync_status, sync_loop, \
     SYNC_INTERVAL, STATIONS
 import logging
@@ -136,7 +135,7 @@ async def lifespan(app: FastAPI):
     
     # Start OpenAQ sync background task
     sync_task = asyncio.create_task(
-        sync_loop(insert_openaq_reading, cleanup_old_readings, clear_all_caches)
+        sync_loop(insert_openaq_reading, clear_all_caches)
     )
     logging.info(f"OpenAQ sync started (interval: {SYNC_INTERVAL}s)")
     logging.info(f"Valid sensor types: {VALID_SENSOR_TYPES}")
@@ -166,7 +165,7 @@ app = FastAPI(
 Instrumentator().instrument(app).expose(app)
 
 
-# ENDPOINTS
+# HEALTH ENDPOINTS
 @app.get("/")
 async def root():
     return {
@@ -204,7 +203,7 @@ async def trigger_sync():
         raise HTTPException(status_code=409, detail="Sync already running")
     
     asyncio.create_task(
-        run_sync(insert_openaq_reading, cleanup_old_readings, clear_all_caches)
+        run_sync(insert_openaq_reading, clear_all_caches)
     )
     return {"message": "Sync started", "status": sync_status}
 

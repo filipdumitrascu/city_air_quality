@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from psycopg2 import pool
 import logging
 
+# Logging to stdout only (visible via kubectl logs)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -10,7 +11,7 @@ logging.basicConfig(
 
 db_pool = None
 
-# Valid sensor types - no legacy types
+# Valid sensor types
 VALID_SENSOR_TYPES = ['SPO-RO', 'CityAirQ', 'WearAware', 'Forecast']
 
 
@@ -204,6 +205,7 @@ def fetch_data(params):
         
         cursor.close()
         logging.info(f"Fetched {len(rows)} rows, deduplicated to {len(results)} unique locations")
+        
         return results
         
     except HTTPException:

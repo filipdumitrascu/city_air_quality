@@ -19,14 +19,10 @@ logging.basicConfig(
 
 async def send_data_to_database(payload: dict) -> dict:
     """
-    Send sensor data to database for storage.
-    
+    Send sensor data to database for storage. (used by ingest service)
+
     Args:
-        payload: Dict with sensor data matching pollution_data schema:
-            - sensor_id, sensor_type, timestamp, latitude, longitude
-            - Optional: altitude, humidity, pressure, temperature
-            - Optional: co, co2, no2, nh3, vocs
-            - Optional: pm1_0, pm2_5, pm10
+        payload: Dict with sensor data matching pollution_data schema
     
     Returns:
         {"success": True} on success
@@ -64,21 +60,15 @@ async def send_data_to_database(payload: dict) -> dict:
 
 async def get_data_from_database(payload: dict) -> str:
     """
-    Fetch pollution data from database.
+    Fetch pollution data from database. (used by data provider service)
     
     Args:
         payload: Dict containing:
-            - latitude: Center point latitude
-            - longitude: Center point longitude
-            - radius: Search radius in km
-            - layers: List of pollution metrics (optional)
-            - sensor_types: List of sensor types (optional)
+            - latitude, longitude, radius
+            - layers (optional), sensor_types (optional)
     
     Returns:
         JSON string with sensor readings
-    
-    Raises:
-        HTTPException on error
     """
     try:
         url = f"{DATABASE_SERVICE_URL}/get_data/"

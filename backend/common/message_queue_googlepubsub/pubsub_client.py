@@ -8,7 +8,6 @@ from typing import Callable, Any
 # GCP Project ID from environment or default
 PROJECT_ID = os.getenv("GCP_PROJECT_ID", "cityairq")
 
-
 class PubSubClientSubscriber:
     def __init__(self, subscription_name: str, process_message: Callable):
         self.project_id = PROJECT_ID
@@ -78,14 +77,14 @@ class PubSubClientSubscriber:
 class PubSubClientPublisher:
     # Reusable publisher client (thread-safe)
     _publisher = None
-    
+
     @classmethod
     def _get_publisher(cls) -> pubsub_v1.PublisherClient:
         """Get or create singleton publisher client."""
         if cls._publisher is None:
             cls._publisher = pubsub_v1.PublisherClient()
         return cls._publisher
-    
+
     @staticmethod
     def publish_message(topic_name: str, message_data: Any) -> str:
         """
@@ -115,7 +114,7 @@ class PubSubClientPublisher:
         except Exception as e:
             logging.error(f"Failed to publish to {topic_name}: {e}")
             raise
-    
+
     @staticmethod
     async def publish_message_async(topic_name: str, message_data: Any) -> str:
         """

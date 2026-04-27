@@ -1,7 +1,7 @@
 import pytest
-import json
 import sys
 import os
+import json
 from unittest.mock import patch, AsyncMock, MagicMock
 
 # Mock Google Cloud modules before importing app
@@ -19,7 +19,6 @@ with patch('common.message_queue_googlepubsub.pubsub_client.pubsub_v1.Subscriber
 from httpx import AsyncClient
 
 
-# TEST DATA (matching pollution_data schema)
 # Valid ingest payload - all fields
 valid_ingest_payload_full = {
     "sensor_type": "CityAirQ",
@@ -80,7 +79,7 @@ valid_route_payload = {
     "goal": {"lat": 44.4368, "lon": 26.0925},
     "alpha": 1.0,
     "sensor_types": ["CityAirQ", "WearAware"],
-    "transport_mode": "car"
+    "transport_mode": "bicycle"
 }
 
 # Mock response from Data Provider Service
@@ -118,7 +117,6 @@ async def test_health_check():
         assert response.json()["status"] == "healthy"
         assert response.json()["service"] == "client_message_handler"
 
-
 @pytest.mark.asyncio
 async def test_root_endpoint():
     """Test / endpoint returns service info"""
@@ -128,10 +126,6 @@ async def test_root_endpoint():
     assert response.status_code == 200
     assert response.json()["service"] == "client_message_handler"
     assert response.json()["status"] == "running"
-
-
-# Ingest endpoit will be tested in the integration testing
-# Mocking the auth is hard
 
 
 # RESULTS ENDPOINT TESTS
@@ -153,7 +147,6 @@ async def test_results_success(mock_queue, mock_publish, mock_redis):
     assert response.json()["cached"] == False
     mock_publish.assert_called_once_with("results_service_messages", valid_results_payload)
 
-
 @pytest.mark.asyncio
 @patch("client_message_handler.redis_client")
 async def test_results_cache_hit(mock_redis):
@@ -167,7 +160,6 @@ async def test_results_cache_hit(mock_redis):
     assert response.json()["cached"] == True
     assert "data" in response.json()
 
-
 @pytest.mark.asyncio
 async def test_results_no_auth_required():
     """Test /results/ works without authentication"""
@@ -180,7 +172,6 @@ async def test_results_no_auth_required():
             
             assert response.status_code == 200
 
-
 @pytest.mark.asyncio
 async def test_results_invalid_payload():
     """Test /results/ with invalid payload - should return 422"""
@@ -190,7 +181,6 @@ async def test_results_invalid_payload():
         response = await ac.post("/results/", json=invalid_payload)
     
     assert response.status_code == 422
-
 
 @pytest.mark.asyncio
 @patch("client_message_handler.redis_client")
@@ -206,7 +196,7 @@ async def test_results_with_layers_filter(mock_queue, mock_publish, mock_redis):
         "latitude": 44.4268,
         "longitude": 26.1025,
         "radius": 5.0,
-        "layers": ["pm10"]  # Only PM10
+        "layers": ["pm10"]
     }
     
     async with AsyncClient(app=app, base_url="http://test") as ac:
@@ -237,7 +227,6 @@ async def test_route_success(mock_post):
     assert response.status_code == 200
     assert "type" in response.json()
 
-
 @pytest.mark.asyncio
 async def test_route_no_auth_required():
     """Test /route/ works without authentication"""
@@ -252,17 +241,15 @@ async def test_route_no_auth_required():
         
         assert response.status_code == 200
 
-
 @pytest.mark.asyncio
 async def test_route_invalid_payload():
     """Test /route/ with invalid payload - should return 422"""
-    invalid_payload = {"start": {"lat": 44.4268}}  # Missing goal
+    invalid_payload = {"start": {"lat": 44.4268}}
     
     async with AsyncClient(app=app, base_url="http://test") as ac:
         response = await ac.post("/route/", json=invalid_payload)
     
     assert response.status_code == 422
-
 
 @pytest.mark.asyncio
 @patch("client_message_handler.httpx.AsyncClient.post")
@@ -303,7 +290,6 @@ async def test_cache_stats(mock_redis):
     assert response.status_code == 200
     assert response.json()["connected"] == True
     assert response.json()["cached_queries"] == 2
-
 
 @pytest.mark.asyncio
 @patch("client_message_handler.redis_client")

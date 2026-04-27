@@ -9,9 +9,6 @@ def get_db_config():
     
     Returns:
         dict with host, port, user, password, dbname
-    
-    Raises:
-        RuntimeError if DATABASE_URL not set
     """
     db_url = os.getenv("DATABASE_URL")
     if not db_url:

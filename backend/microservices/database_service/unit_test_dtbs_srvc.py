@@ -3,9 +3,8 @@ import sys
 import os
 import json
 from unittest.mock import patch, MagicMock
-from httpx import AsyncClient, ASGITransport
 
-# Setup mocks before imports
+# Mock Google Cloud modules before importing app
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 sys.modules['psycopg2'] = MagicMock()
@@ -22,10 +21,10 @@ mock_config.get_db_config.return_value = {
 sys.modules['config'] = mock_config
 
 from database_service import app, AVAILABLE_LAYERS
-from db import insert_data, fetch_data
+from httpx import AsyncClient, ASGITransport
 
 
-# TEST DATA (matching pollution_data schema)
+# Test data
 valid_insert_payload_full = {
     "sensor_type": "CityAirQ",
     "sensor_id": "001",
@@ -106,7 +105,6 @@ async def test_root_endpoint():
     assert response.json()["status"] == "running"
 
 
-
 # ADD DATA ENDPOINT TESTS
 @pytest.mark.asyncio
 @patch("database_service.insert_data")
@@ -117,8 +115,9 @@ async def test_add_data_success_full(mock_insert):
         response = await ac.post("/add_data/", json=valid_insert_payload_full)
     
     assert response.status_code == 200
-    assert response.json()["success"] == True
+    assert response.json()["sensor_type"] == "CityAirQ"
     assert response.json()["sensor_id"] == "001"
+    assert response.json()["cache_cleared"] == True
     mock_insert.assert_called_once()
     
     # Verify all 17 params passed correctly
@@ -127,7 +126,6 @@ async def test_add_data_success_full(mock_insert):
     assert call_args[0] == "CityAirQ"  # sensor_type
     assert call_args[1] == "001"  # sensor_id
     assert call_args[15] == 42.7  # pm10
-
 
 @pytest.mark.asyncio
 @patch("database_service.insert_data")
@@ -138,14 +136,15 @@ async def test_add_data_success_minimal(mock_insert):
         response = await ac.post("/add_data/", json=valid_insert_payload_minimal)
     
     assert response.status_code == 200
-    assert response.json()["success"] == True
+    assert response.json()["sensor_type"] == "WearAware"
+    assert response.json()["sensor_id"] == "005"
+    assert response.json()["cache_cleared"] == True
     
     # Verify optional fields defaulted to -1
     call_args = mock_insert.call_args[0][0]
     assert call_args[5] == -1  # altitude
     assert call_args[15] == -1  # pm10
     assert call_args[16] == -1  # vocs
-
 
 @pytest.mark.asyncio
 async def test_add_data_missing_required():
@@ -163,7 +162,6 @@ async def test_add_data_missing_required():
     
     assert response.status_code == 422
 
-
 @pytest.mark.asyncio
 @patch("database_service.insert_data")
 async def test_add_data_database_error(mock_insert):
@@ -178,14 +176,13 @@ async def test_add_data_database_error(mock_insert):
     assert "Error adding data" in response.text
 
 
-
 # GET DATA ENDPOINT TESTS
 @pytest.mark.asyncio
 @patch("database_service.redis_client")
 @patch("database_service.fetch_data")
 async def test_get_data_success(mock_fetch, mock_redis):
     """Test /get_data/ successful query"""
-    mock_redis.get.return_value = None  # Cache miss
+    mock_redis.get.return_value = None
     mock_fetch.return_value = mock_fetch_response
     
     params = {
@@ -302,6 +299,30 @@ async def test_get_data_fixed_sensors(mock_fetch, mock_redis):
 @pytest.mark.asyncio
 @patch("database_service.redis_client")
 @patch("database_service.fetch_data")
+async def test_get_data_forecast_sensors(mock_fetch, mock_redis):
+    """Test /get_data/ with Forecast sensor type"""
+    mock_redis.get.return_value = None
+    mock_fetch.return_value = mock_fetch_response
+    
+    params = {
+        "latitude": 44.4268,
+        "longitude": 26.1025,
+        "radius": 5.0,
+        "sensor_types": ["Forecast"]
+    }
+    
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.get("/get_data/", params=params)
+    
+    assert response.status_code == 200
+    
+    call_args = mock_fetch.call_args[0][0]
+    assert call_args[5] == ["Forecast"]
+
+@pytest.mark.asyncio
+@patch("database_service.redis_client")
+@patch("database_service.fetch_data")
 async def test_get_data_no_results(mock_fetch, mock_redis):
     """Test /get_data/ when no data found - returns 404"""
     from fastapi import HTTPException
@@ -343,7 +364,6 @@ async def test_get_data_database_error(mock_fetch, mock_redis):
     assert response.status_code == 500
 
 
-
 # CACHE MANAGEMENT TESTS
 @pytest.mark.asyncio
 @patch("database_service.redis_client")
@@ -366,16 +386,22 @@ async def test_cache_stats(mock_redis):
 @pytest.mark.asyncio
 @patch("database_service.redis_client")
 async def test_cache_clear(mock_redis):
-    """Test /cache/clear removes cached queries"""
-    mock_redis.keys.return_value = ["db_query:abc", "db_query:def"]
+    """Test /cache/clear removes cached queries from all prefixes"""
+    # clear_all_caches() iterates over multiple prefixes
+    mock_redis.keys.side_effect = [
+        ["db_query:abc", "db_query:def"],      # db_query:*
+        ["provider_query:xyz"],                # provider_query:*
+        [],                                    # client_query:*
+        ["route:123"]                          # route:*
+    ]
     
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         response = await ac.delete("/cache/clear")
     
     assert response.status_code == 200
-    assert response.json()["cleared"] == 2
-    mock_redis.delete.assert_called_once()
+    # Total: 2 + 1 + 0 + 1 = 4 keys cleared
+    assert response.json()["cleared"] == 4
 
 @pytest.mark.asyncio
 @patch("database_service.redis_client")
@@ -389,3 +415,18 @@ async def test_cache_clear_empty(mock_redis):
     
     assert response.status_code == 200
     assert response.json()["cleared"] == 0
+
+
+# OPENAQ ENDPOINTS TESTS
+@pytest.mark.asyncio
+async def test_openaq_status():
+    """Test /openaq/status returns sync information"""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.get("/openaq/status")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert "sync_interval_seconds" in data
+    assert "stations" in data
+    assert "gap_fill_enabled" in data

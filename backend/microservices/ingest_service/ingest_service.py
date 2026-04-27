@@ -1,29 +1,19 @@
-"""
-Ingest Service - Sensor Data Processor for CityAirQ
-
-Receives sensor data from Client Message Handler via PubSub,
-processes timestamps, and forwards to Database Service for storage.
-"""
-
-import json
-import logging
-import asyncio
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
+import logging
+import json
+import asyncio
 
 from database_service.client.database_service_client import send_data_to_database
 from common.message_queue_googlepubsub.pubsub_client import PubSubClientSubscriber
 
 
-# Logging to stdout only
+# Logging to stdout only (visible via kubectl logs)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
-
-# PubSub subscription for sensor data
-SUBSCRIPTION_NAME = "ingest_service_messages-sub"
 
 # Default values for optional fields
 OPTIONAL_FIELD_DEFAULTS = {
@@ -32,20 +22,10 @@ OPTIONAL_FIELD_DEFAULTS = {
     'pm1_0': -1, 'pm2_5': -1, 'pm10': -1
 }
 
+
+# PubSub message handler
 async def process_message(message):
-    """
-    Process incoming sensor data and store in database.
-    
-    Expected payload (from Client Message Handler):
-    {
-        "sensor_type": "CityAirQ",
-        "sensor_id": "001",
-        "timestamp": 1718699260000,
-        "latitude": 44.4268,
-        "longitude": 26.1025,
-        ...optional pollution/weather fields...
-    }
-    """
+    """ Process incoming sensor data and store in database. """
     try:
         # Decode message payload
         data = json.loads(message.data.decode("utf-8"))
@@ -82,16 +62,16 @@ async def process_message(message):
         logging.error(f"Error processing message: {str(e)}")
         message.nack()
 
-
 # PubSub subscriber
-ingest_subscriber = PubSubClientSubscriber(SUBSCRIPTION_NAME, process_message)
+ingest_subscriber = PubSubClientSubscriber("ingest_service_messages-sub", process_message)
 
 
 # FASTAPI APPLICATION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Application lifespan - start subscriber on startup."""
     asyncio.create_task(ingest_subscriber.start_subscriber())
-    logging.info(f"PubSub subscriber started for '{SUBSCRIPTION_NAME}'")
+    logging.info(f"PubSub subscriber started for 'ingest_service_messages-sub'")
     
     yield
     
@@ -105,10 +85,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Prometheus metrics
 Instrumentator().instrument(app).expose(app)
 
 
-# ENDPOINTS
+# HEALTH ENDPOINTS
 @app.get("/")
 async def root():
     return {
@@ -122,5 +103,4 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "ingest_service",
-        "subscription": SUBSCRIPTION_NAME
     }
