@@ -17,7 +17,6 @@ def haversine_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     
     return R * 2 * math.asin(math.sqrt(a))
 
-
 def euclidean_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """Straight-line distance (fast, approximate)"""
     lat1, lon1 = coord1
@@ -27,7 +26,6 @@ def euclidean_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     lon_km = (lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
     
     return math.sqrt(lat_km ** 2 + lon_km ** 2)
-
 
 def manhattan_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """Grid-based (taxicab) distance"""
@@ -39,7 +37,6 @@ def manhattan_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     
     return lat_km + lon_km
 
-
 def diagonal_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """Chebyshev distance"""
     lat1, lon1 = coord1
@@ -49,7 +46,6 @@ def diagonal_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) 
     lon_km = abs(lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
     
     return max(lat_km, lon_km)
-
 
 def octile_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """8-directional movement"""

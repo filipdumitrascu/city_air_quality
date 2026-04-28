@@ -1,18 +1,3 @@
-"""
-Routing Service - Pollution-Aware Navigation for CityAirQ
-
-Two transport modes:
-- foot: A* pathfinding on pollution grid
-- bicycle: Google Routes API with pollution scoring
-
-Pollutants used for routing:
-- PM10: measured by all sensors (fixed, CityAirQ, WearAware)
-- PM2.5: measured by all sensors
-
-NO2 excluded because WearAware doesn't measure it (returns -1).
-Values of -1 are treated as missing and excluded from AQI calculation.
-"""
-
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -26,23 +11,22 @@ from models import (
 from config import get_config, ROUTING_POLLUTANTS
 from cache_manager import CacheManager
 
-# Foot mode
 from foot.data_loader import PollutionDataLoader
 from foot.graph_builder import PollutionGraph
 from foot.pathfinding import AStarPathfinder
 from foot.utils import calculate_route_stats, HEURISTICS
 
-# Bicycle mode
 from bicycle.google_routes import GoogleRoutesClient
 
 
-# CONFIGURATION
+# Logging to stdout only (visible via kubectl logs)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
+# Globals
 cache_manager = None
 data_loader = None
 google_routes_client = None
@@ -77,8 +61,9 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan
 )
-
+# Prometheus metrics
 Instrumentator().instrument(app).expose(app)
+
 
 # HEALTH ENDPOINTS
 @app.get("/")

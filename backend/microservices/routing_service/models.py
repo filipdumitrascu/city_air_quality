@@ -1,16 +1,10 @@
-"""
-Pydantic models for Routing Service
-"""
-
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
-
 
 class Coordinate(BaseModel):
     """Geographic coordinate"""
     lat: float = Field(..., ge=-90, le=90)
     lon: float = Field(..., ge=-180, le=180)
-
 
 class RouteRequest(BaseModel):
     """Request for route calculation"""
@@ -35,7 +29,6 @@ class RouteRequest(BaseModel):
         description="'foot' = A* on pollution grid, 'bicycle' = Google Routes API"
     )
 
-
 class RouteNode(BaseModel):
     """Single waypoint with pollution values"""
     lat: float
@@ -44,12 +37,10 @@ class RouteNode(BaseModel):
     pm2_5: Optional[float] = None
     aqi: Optional[float] = None
 
-
 class GeoJSONGeometry(BaseModel):
     """GeoJSON LineString"""
     type: str = "LineString"
     coordinates: List[List[float]]  # [[lon, lat], ...]
-
 
 class GeoJSONProperties(BaseModel):
     """Route properties with pollution stats for all 8 pollutants"""
@@ -88,19 +79,16 @@ class GeoJSONProperties(BaseModel):
     google_routes_considered: Optional[int] = None
     cached: bool = False
 
-
 class GeoJSONFeature(BaseModel):
     """GeoJSON Feature"""
     type: str = "Feature"
     geometry: GeoJSONGeometry
     properties: GeoJSONProperties
 
-
 class RouteResponse(BaseModel):
     """Route response with GeoJSON and waypoints"""
     route: GeoJSONFeature
     waypoints: List[RouteNode]
-
 
 class HealthResponse(BaseModel):
     """Health check response"""
