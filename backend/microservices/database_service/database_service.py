@@ -120,7 +120,6 @@ def insert_openaq_reading(reading: dict) -> bool:
 # FASTAPI APPLICATION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan - startup and shutdown."""
     # Startup
     try:
         init_db()
