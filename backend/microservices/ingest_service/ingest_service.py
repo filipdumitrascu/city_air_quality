@@ -15,7 +15,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Default values for optional fields
+# Constants
 OPTIONAL_FIELD_DEFAULTS = {
     'altitude': -1, 'humidity': -1, 'pressure': -1, 'temperature': -1,
     'co': -1, 'co2': -1, 'no2': -1, 'nh3': -1, 'vocs': -1,

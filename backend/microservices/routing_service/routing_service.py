@@ -96,7 +96,7 @@ async def health_check():
     
     db_ok = False
     try:
-        await data_loader.fetch_pollution_data(44.43, 26.10, 1.0, ["mobile"])
+        await data_loader.fetch_pollution_data(44.43, 26.10, 1.0, ["CityAirQ", "WearAware"])
         db_ok = True
     except:
         pass

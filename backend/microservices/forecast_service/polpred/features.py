@@ -131,9 +131,14 @@ def build_snapshot_feature_row(
 
         for exp in exponents:
             suffix = _exp_suffix(exp)
-            weights = 1.0 / (np.power(sorted_distances, exp) + 1e-6)
-            features[f"{value_col}_idw_mean_exp{suffix}"] = float(np.average(sorted_values, weights=weights))
-            features[f"{value_col}_idw_sum_exp{suffix}"] = float(np.sum(sorted_values * weights))
-            features[f"{value_col}_mostentita_max_exp{suffix}"] = float(np.max(sorted_values * weights))
+            # Use only k-nearest neighbors for IDW (not all stations)
+            k = min(nearest_station_count, len(sorted_values))
+            k_values = sorted_values[:k]
+            k_distances = sorted_distances[:k]
+            
+            weights = 1.0 / (np.power(k_distances, exp) + 1e-6)
+            features[f"{value_col}_idw_mean_exp{suffix}"] = float(np.average(k_values, weights=weights))
+            features[f"{value_col}_idw_sum_exp{suffix}"] = float(np.sum(k_values * weights))
+            features[f"{value_col}_mostentita_max_exp{suffix}"] = float(np.max(k_values * weights))
 
     return features

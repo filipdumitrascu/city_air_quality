@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 
 
@@ -22,7 +21,6 @@ class PolPredConfig:
     station_id_col: str = "station_id"
     latitude_col: str = "lat"
     longitude_col: str = "lon"
-    # CityAirQ pollutants (what fixed stations B-1 to B-8 measure)
     pollutant_columns: tuple[str, ...] = ("pm10", "pm2_5", "no2", "co")
     extra_feature_columns: tuple[str, ...] = ()
     distance_exponents: tuple[float, ...] = (0.5, 1.0, 1.5)

@@ -1,12 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Literal
-import time
-
-
-def get_current_timestamp_ms() -> int:
-    """Get current Unix timestamp in milliseconds."""
-    return int(time.time() * 1000)
-
+from typing import Optional, Literal
 
 class InsertPollutionDataRequest(BaseModel):
     """
@@ -53,35 +46,3 @@ class InsertPollutionDataRequest(BaseModel):
     @classmethod
     def null_to_default(cls, v):
         return -1 if v is None else v
-
-
-class InsertPollutionDataResponse(BaseModel):
-    """Response model for successful insertion."""
-    success: bool
-    sensor_type: str
-    sensor_id: Optional[str] = None
-
-
-class SensorReading(BaseModel):
-    """Model for a single sensor reading."""
-    sensor_type: str
-    sensor_id: Optional[str] = None
-    timestamp: str
-    latitude: float
-    longitude: float
-    
-    # Optional pollution data
-    pm10: Optional[float] = None
-    pm2_5: Optional[float] = None
-    pm1_0: Optional[float] = None
-    no2: Optional[float] = None
-    co: Optional[float] = None
-    co2: Optional[float] = None
-    nh3: Optional[float] = None
-    vocs: Optional[float] = None
-    
-    # Optional weather data
-    temperature: Optional[float] = None
-    humidity: Optional[float] = None
-    pressure: Optional[float] = None
-    altitude: Optional[float] = None

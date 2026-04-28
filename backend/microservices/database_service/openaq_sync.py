@@ -5,14 +5,13 @@ import httpx
 from datetime import datetime
 from typing import List, Callable
 
-SYNC_INTERVAL = int(os.getenv('OPENAQ_SYNC_INTERVAL', '3600'))
-READINGS_TO_KEEP = int(os.getenv('OPENAQ_READINGS_TO_KEEP', '3'))
-API_KEY = os.getenv('OPENAQ_API_KEY', '')
+# ENV variables
 BASE_URL = "https://api.openaq.org/v3"
-
-# Forecast service for gap filling
+API_KEY = os.getenv('OPENAQ_API_KEY', '')
+SYNC_INTERVAL = int(os.getenv('OPENAQ_SYNC_INTERVAL', '3600'))
 FORECAST_SERVICE_URL = os.getenv('FORECAST_SERVICE_URL', 'http://forecast-service:8000')
 ENABLE_GAP_FILL = os.getenv('ENABLE_GAP_FILL', 'true').lower() == 'true'
+
 
 # Active Bucharest stations with 2026 data (provider: EEA, id: 70)
 # B-9 to B-30 are offline since 2024-07-30
@@ -145,7 +144,6 @@ async def fetch_and_process_station(location_id: int) -> List[dict]:
 # SYNC FUNCTIONS
 async def run_sync(
     insert_func: Callable[[dict], bool],
-    cleanup_func: Callable[[str, int], int],
     clear_cache_func: Callable[[], int]
 ):
     """Main sync function."""
@@ -179,11 +177,6 @@ async def run_sync(
             logging.error(f"OpenAQ: Error for {station_info.get('code')}: {e}")
             total_errors += 1
     
-    total_cleaned = 0
-    for location_id, station_info in STATIONS.items():
-        cleaned = cleanup_func(station_info.get('code'), READINGS_TO_KEEP)
-        total_cleaned += cleaned
-    
     if total_inserted > 0:
         clear_cache_func()
     
@@ -193,9 +186,10 @@ async def run_sync(
     if total_errors == 0 and total_inserted > 0:
         sync_status['last_success'] = datetime.now().isoformat()
     
-    logging.info(f"OpenAQ: Done - {total_inserted} inserted, {total_errors} errors, {total_cleaned} cleaned")
+    logging.info(f"OpenAQ: Done - {total_inserted} inserted, {total_errors} errors")
     
-    # Trigger gap fill for visualization (only every 6 hours: 0, 6, 12, 18 UTC)
+
+    # Forecast service for fixed sensors (only every six hours)
     current_hour = datetime.utcnow().hour
     should_fill_gaps = ENABLE_GAP_FILL and total_inserted > 0 and (current_hour % 6 == 0)
     
@@ -204,7 +198,7 @@ async def run_sync(
         gaps_filled = await trigger_gap_fill()
         sync_status['gaps_filled'] = gaps_filled
         if gaps_filled > 0:
-            clear_cache_func()  # Clear cache again after gap fill
+            clear_cache_func()
     elif ENABLE_GAP_FILL and total_inserted > 0:
         logging.info(f"OpenAQ: Skipping gap fill (hour={current_hour}, next at hour divisible by 6)")
     
@@ -246,10 +240,8 @@ async def trigger_gap_fill() -> int:
         logging.warning(f"OpenAQ: Gap fill error: {e}")
         return 0
 
-
 async def sync_loop(
     insert_func: Callable[[dict], bool],
-    cleanup_func: Callable[[str, int], int],
     clear_cache_func: Callable[[], int]
 ):
     """Background task that syncs data periodically."""
@@ -257,7 +249,7 @@ async def sync_loop(
     
     while True:
         try:
-            await run_sync(insert_func, cleanup_func, clear_cache_func)
+            await run_sync(insert_func, clear_cache_func)
         except Exception as e:
             logging.error(f"OpenAQ: Sync loop error: {e}")
         
@@ -268,7 +260,6 @@ def get_status() -> dict:
     """Get current sync status."""
     return {
         "sync_interval_seconds": SYNC_INTERVAL,
-        "readings_per_station": READINGS_TO_KEEP,
         "stations": [info['code'] for info in STATIONS.values()],
         "api_key_configured": bool(API_KEY),
         "gap_fill_enabled": ENABLE_GAP_FILL,

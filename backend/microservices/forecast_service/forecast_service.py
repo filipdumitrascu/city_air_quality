@@ -1,81 +1,46 @@
-import os
-import logging
-import asyncio
-from datetime import datetime
-from typing import List, Optional
-from contextlib import asynccontextmanager
-
-import httpx
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from datetime import datetime
+import logging
+import os
+import time
+import asyncio
+import math
+import httpx
 
 from polpred import PolPredModel
 
-
+# Logging to stdout only (visible via kubectl logs)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
+
+# ENV variables
 DATABASE_SERVICE_URL = os.getenv("DATABASE_SERVICE_URL", "http://database-service:8000")
 MODEL_PATH = os.getenv("MODEL_PATH", "/app/model/polpred.pkl")
-
-# Grid configuration (matching routing_service)
 GRID_RESOLUTION = float(os.getenv("GRID_RESOLUTION", "0.002"))  # ~220m
 
-# Bucharest bounds
+# Constants
 BUCHAREST_BOUNDS = {
     "lat_min": 44.35,
     "lat_max": 44.55,
     "lon_min": 25.95,
     "lon_max": 26.25
 }
-
-# Pollutants to predict (what fixed stations measure)
 PREDICT_POLLUTANTS = ["pm10", "pm2_5", "no2", "co"]
-
-# Romania timezone offset
 ROMANIA_OFFSET_MS = 3 * 60 * 60 * 1000
 
 
-# REQUEST/RESPONSE MODELS
+# Request/Response Models
 class Point(BaseModel):
     lat: float = Field(..., ge=-90, le=90)
     lon: float = Field(..., ge=-180, le=180)
-
-class PredictRequest(BaseModel):
-    """Request to predict pollution at specific points."""
-    points: List[Point] = Field(..., min_length=1, max_length=1000)
-    insert_to_db: bool = Field(default=True, description="Insert predictions to database")
-
-class GridPredictRequest(BaseModel):
-    """Request to predict pollution for a grid area."""
-    lat_min: float = Field(default=BUCHAREST_BOUNDS["lat_min"])
-    lat_max: float = Field(default=BUCHAREST_BOUNDS["lat_max"])
-    lon_min: float = Field(default=BUCHAREST_BOUNDS["lon_min"])
-    lon_max: float = Field(default=BUCHAREST_BOUNDS["lon_max"])
-    resolution: float = Field(default=GRID_RESOLUTION, description="Grid resolution in degrees")
-    insert_to_db: bool = Field(default=True)
-
-class PredictionResult(BaseModel):
-    """Single prediction result."""
-    lat: float
-    lon: float
-    pm10: Optional[float] = None
-    pm2_5: Optional[float] = None
-    no2: Optional[float] = None
-    co: Optional[float] = None
-    timestamp: int
-
-class PredictResponse(BaseModel):
-    """Response with predictions."""
-    predictions: List[PredictionResult]
-    station_count: int
-    inserted_to_db: bool
-    prediction_time_ms: float
-
 class ModelStatus(BaseModel):
     """Model status information."""
     loaded: bool
@@ -85,7 +50,7 @@ class ModelStatus(BaseModel):
     last_prediction: Optional[str] = None
 
 
-# GLOBAL STATE
+# Global state
 model: Optional[PolPredModel] = None
 model_status = {
     "loaded": False,
@@ -93,7 +58,8 @@ model_status = {
     "predictions_count": 0
 }
 
-# HELPER FUNCTIONS
+
+# Helper functions
 def get_current_timestamp_ms() -> int:
     """Get current Unix timestamp in milliseconds (Romania time)."""
     import time
@@ -175,24 +141,6 @@ async def insert_prediction_to_db(prediction: dict) -> bool:
         logger.warning(f"Failed to insert prediction: {e}")
         return False
 
-def generate_grid_points(
-    lat_min: float, lat_max: float,
-    lon_min: float, lon_max: float,
-    resolution: float
-) -> List[Point]:
-    """Generate grid points within bounds."""
-    points = []
-    lat = lat_min
-    while lat <= lat_max:
-        lon = lon_min
-        while lon <= lon_max:
-            points.append(Point(lat=round(lat, 6), lon=round(lon, 6)))
-            lon += resolution
-        lat += resolution
-    
-    logger.info(f"Generated {len(points)} grid points")
-    return points
-
 
 # FASTAPI APPLICATION
 @asynccontextmanager
@@ -218,7 +166,9 @@ async def lifespan(app: FastAPI):
         model_status["loaded"] = False
     
     logger.info("Forecast Service ready")
+
     yield
+
     logger.info("Forecast Service shutting down")
 
 app = FastAPI(
@@ -228,10 +178,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Prometheus metrics
 Instrumentator().instrument(app).expose(app)
 
 
-# ENDPOINTS
+# HEALTH ENDPOINTS
 @app.get("/")
 async def root():
     return {
@@ -270,132 +221,23 @@ async def get_model_status():
         last_prediction=model_status.get("last_prediction")
     )
 
-@app.post("/predict", response_model=PredictResponse)
-async def predict_points(request: PredictRequest):
-    """
-    Predict pollution at specific coordinates.
-    
-    Uses current sensor state (SPO-RO + mobile) to predict
-    pollution values at requested points.
-    """
-    import time
-    start_time = time.time()
-    
-    if not model_status["loaded"] or model is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Model not loaded. Please provide a trained model."
-        )
-    
-    # Fetch current sensor state
-    station_state = await fetch_current_sensor_state()
-    
-    if len(station_state) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Need at least 2 stations for prediction, got {len(station_state)}"
-        )
-    
-    # Make predictions
-    timestamp = get_current_timestamp_ms()
-    predictions = []
-    
-    for point in request.points:
-        try:
-            pred = model.predict_at(
-                latitude=point.lat,
-                longitude=point.lon,
-                station_state=station_state,
-                timestamp=datetime.utcnow().isoformat()
-            )
-            
-            result = PredictionResult(
-                lat=point.lat,
-                lon=point.lon,
-                pm10=pred.get("pm10") or pred.get("PM10"),
-                pm2_5=pred.get("pm2_5") or pred.get("PM2.5"),
-                no2=pred.get("no2") or pred.get("NO2"),
-                co=pred.get("co") or pred.get("CO"),
-                timestamp=timestamp
-            )
-            predictions.append(result)
-            
-        except Exception as e:
-            logger.warning(f"Prediction failed for ({point.lat}, {point.lon}): {e}")
-            continue
-    
-    # Insert to database if requested
-    inserted = False
-    if request.insert_to_db and predictions:
-        insert_tasks = [
-            insert_prediction_to_db(pred.model_dump())
-            for pred in predictions
-        ]
-        results = await asyncio.gather(*insert_tasks)
-        inserted = any(results)
-        logger.info(f"Inserted {sum(results)}/{len(predictions)} predictions to DB")
-    
-    # Update status
-    model_status["last_prediction"] = datetime.utcnow().isoformat()
-    model_status["predictions_count"] += len(predictions)
-    
-    calc_time = round((time.time() - start_time) * 1000, 2)
-    
-    return PredictResponse(
-        predictions=predictions,
-        station_count=len(station_state),
-        inserted_to_db=inserted,
-        prediction_time_ms=calc_time
-    )
 
-@app.post("/predict/grid", response_model=PredictResponse)
-async def predict_grid(request: GridPredictRequest):
-    """
-    Predict pollution for entire grid area.
-    
-    Generates grid points within bounds and predicts pollution
-    at each point. Useful for filling gaps in sensor coverage.
-    """
-    # Generate grid points
-    points = generate_grid_points(
-        request.lat_min, request.lat_max,
-        request.lon_min, request.lon_max,
-        request.resolution
-    )
-    
-    if len(points) > 1000:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Grid too large: {len(points)} points. Max 1000. Increase resolution."
-        )
-    
-    # Use regular predict endpoint
-    predict_request = PredictRequest(
-        points=points,
-        insert_to_db=request.insert_to_db
-    )
-    
-    return await predict_points(predict_request)
-
+# PREDICT ENDPOINT
 @app.post("/predict/fill-gaps")
 async def predict_fill_gaps(
     max_neighbor_distance_km: float = 2.0,
     resolution: float = 0.005  # ~500m for visualization (coarser than routing)
 ):
     """
-    Predict pollution at grid points that:
-    1. Don't have sensor data
-    2. Have at least one neighbor within max_neighbor_distance_km
+    Predict pollution at grid points around each existing sensor.
     
-    This is for VISUALIZATION - filling gaps on the pollution map.
-    Called periodically after OpenAQ sync.
+    Generates a uniform grid in a circle around each sensor station,
+    ensuring complete coverage near all sensors.
     
     Args:
-        max_neighbor_distance_km: Only predict if nearest sensor is within this range (default 2km)
+        max_neighbor_distance_km: Radius around each sensor to generate predictions (default 2km)
         resolution: Grid resolution in degrees (~0.005 = 500m)
     """
-    import time
-    import math
     start_time = time.time()
     
     if not model_status["loaded"] or model is None:
@@ -413,67 +255,68 @@ async def predict_fill_gaps(
             "gaps_filled": 0
         }
     
-    # Helper: haversine distance in km
-    def haversine(lat1, lon1, lat2, lon2):
-        R = 6371  # Earth radius km
-        dlat = math.radians(lat2 - lat1)
-        dlon = math.radians(lon2 - lon1)
-        a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-        return 2 * R * math.asin(math.sqrt(a))
-    
     # Build set of existing sensor coordinates (snapped to grid)
     existing_coords = set()
-    sensor_locations = []  # (lat, lon) for distance checks
+    sensor_locations = []
     
     for station in station_state:
         lat, lon = station["lat"], station["lon"]
         sensor_locations.append((lat, lon))
-        # Snap to grid
         grid_lat = round(lat / resolution) * resolution
         grid_lon = round(lon / resolution) * resolution
         existing_coords.add((round(grid_lat, 6), round(grid_lon, 6)))
     
-    # Generate grid points
-    all_points = generate_grid_points(
-        BUCHAREST_BOUNDS["lat_min"], BUCHAREST_BOUNDS["lat_max"],
-        BUCHAREST_BOUNDS["lon_min"], BUCHAREST_BOUNDS["lon_max"],
-        resolution
-    )
+    # Generate grid points (uniform coverage)
+    km_to_deg_lat = 1 / 111.32
+    km_to_deg_lon = 1 / (111.32 * math.cos(math.radians(44.43)))  # Bucharest latitude
     
-    # Filter: gaps that have at least one neighbor within range
-    gap_points = []
-    for point in all_points:
-        coord = (round(point.lat, 6), round(point.lon, 6))
-        
-        # Skip if already has sensor
-        if coord in existing_coords:
-            continue
-        
-        # Check if any sensor is within max_neighbor_distance_km
-        has_nearby_neighbor = False
-        for slat, slon in sensor_locations:
-            dist = haversine(point.lat, point.lon, slat, slon)
-            if dist <= max_neighbor_distance_km:
-                has_nearby_neighbor = True
-                break
-        
-        if has_nearby_neighbor:
-            gap_points.append(point)
+    radius_deg_lat = max_neighbor_distance_km * km_to_deg_lat
+    radius_deg_lon = max_neighbor_distance_km * km_to_deg_lon
     
-    logger.info(f"Gap fill: {len(all_points)} grid points, {len(existing_coords)} have sensors, "
-                f"{len(gap_points)} gaps with neighbors within {max_neighbor_distance_km}km")
+    steps_lat = int(radius_deg_lat / resolution)
+    steps_lon = int(radius_deg_lon / resolution)
+    
+    gap_points_set = set()
+    
+    for slat, slon in sensor_locations:
+        # Generate grid in square around station, then filter to circle
+        for dlat in range(-steps_lat, steps_lat + 1):
+            for dlon in range(-steps_lon, steps_lon + 1):
+                plat = round(slat + dlat * resolution, 6)
+                plon = round(slon + dlon * resolution, 6)
+                
+                # Skip if outside Bucharest bounds
+                if not (BUCHAREST_BOUNDS["lat_min"] <= plat <= BUCHAREST_BOUNDS["lat_max"] and
+                        BUCHAREST_BOUNDS["lon_min"] <= plon <= BUCHAREST_BOUNDS["lon_max"]):
+                    continue
+                
+                coord = (plat, plon)
+                
+                # Skip if already has sensor
+                if coord in existing_coords:
+                    continue
+                
+                # Skip if already added
+                if coord in gap_points_set:
+                    continue
+                
+                gap_points_set.add(coord)
+    
+    gap_points = [Point(lat=lat, lon=lon) for lat, lon in gap_points_set]
+    
+    logger.info(f"Gap fill: {len(sensor_locations)} sensors, {len(existing_coords)} sensor coords, "
+                f"{len(gap_points)} gap points within {max_neighbor_distance_km}km radius")
     
     if not gap_points:
         return {
             "message": "No gaps to fill near existing sensors",
-            "total_points": len(all_points),
-            "covered_points": len(existing_coords),
+            "sensors": len(sensor_locations),
             "gaps_filled": 0,
             "calculation_time_ms": round((time.time() - start_time) * 1000, 2)
         }
     
     # Limit predictions per call
-    max_predictions = 300
+    max_predictions = 500
     if len(gap_points) > max_predictions:
         logger.info(f"Limiting from {len(gap_points)} to {max_predictions} predictions")
         gap_points = gap_points[:max_predictions]
@@ -518,11 +361,10 @@ async def predict_fill_gaps(
     
     return {
         "message": f"Filled {inserted_count} gap points with predictions",
-        "total_points": len(all_points),
-        "covered_points": len(existing_coords),
+        "sensors": len(sensor_locations),
         "gaps_found": len(gap_points),
         "gaps_filled": inserted_count,
-        "station_count": len(station_state),
         "max_neighbor_distance_km": max_neighbor_distance_km,
+        "resolution_deg": resolution,
         "calculation_time_ms": calc_time
     }

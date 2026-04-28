@@ -35,6 +35,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+# Constants
 # Romania timezone offset (GMT+3 during summer, GMT+2 during winter)
 ROMANIA_OFFSET_MS = 3 * 60 * 60 * 1000  # 3 hours in milliseconds
 

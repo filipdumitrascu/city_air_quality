@@ -28,6 +28,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+# Constants
 AVAILABLE_LAYERS = [
     "pm10", "pm2_5", "pm1_0",  # Particulate matter
     "no2", "co", "co2", "nh3", "vocs",  # Gases
