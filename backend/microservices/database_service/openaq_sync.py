@@ -189,18 +189,18 @@ async def run_sync(
     logging.info(f"OpenAQ: Done - {total_inserted} inserted, {total_errors} errors")
     
 
-    # Forecast service for fixed sensors (only every six hours)
+    # FORECAST SERVICE SYNC (at 00:00, 06:00, 12:00, 18:00 GMT)
     current_hour = datetime.utcnow().hour
     should_fill_gaps = ENABLE_GAP_FILL and total_inserted > 0 and (current_hour % 6 == 0)
     
     if should_fill_gaps:
-        logging.info(f"OpenAQ: Gap fill triggered (hour={current_hour}, every 6h)")
+        logging.info(f"Forecast: Gap fill triggered (hour={current_hour}, every 6h)")
         gaps_filled = await trigger_gap_fill()
         sync_status['gaps_filled'] = gaps_filled
         if gaps_filled > 0:
             clear_cache_func()
     elif ENABLE_GAP_FILL and total_inserted > 0:
-        logging.info(f"OpenAQ: Skipping gap fill (hour={current_hour}, next at hour divisible by 6)")
+        logging.info(f"Forecast: Skipping gap fill (hour={current_hour}, next at hour divisible by 6)")
     
     sync_status['running'] = False
 

@@ -100,11 +100,9 @@ def fetch_data(params):
     """
     Fetch pollution data within geographic bounds.
     
-    Returns only the LATEST reading per unique location (rounded to 4 decimals).
-    This means:
-    - Fixed sensors (SPO-RO): 1 reading per station (latest)
-    - Mobile sensors (CityAirQ, WearAware): 1 reading per unique GPS position (latest)
-    - Forecasts: 1 prediction per grid point (latest)
+    Returns only ONE reading per unique location (rounded to 4 decimals).
+    Priority: real sensors (SPO-RO, CityAirQ, WearAware) over Forecast.
+    If a location has both real sensor data AND Forecast, the real sensor wins.
     
     Args:
         params: Tuple containing:
@@ -123,7 +121,6 @@ def fetch_data(params):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Extract parameters
         layers = params[0]
         latitude = params[1]
         delta_lat = params[2]
@@ -131,15 +128,12 @@ def fetch_data(params):
         delta_lng = params[4]
         sensor_types = params[5] if len(params) > 5 else ['CityAirQ', 'WearAware']
         
-        # Validate sensor types - only allow the 4 valid types
         valid_types = [st for st in sensor_types if st in VALID_SENSOR_TYPES]
         if not valid_types:
-            valid_types = ['CityAirQ', 'WearAware']  # Default to mobile
+            valid_types = ['CityAirQ', 'WearAware']
         
-        # Build column list - always include base columns
         base_columns = ['sensor_type', 'sensor_id', 'timestamp', 'latitude', 'longitude']
         
-        # Add requested layers (validate against schema)
         valid_layers = ['pm10', 'pm2_5', 'pm1_0', 'no2', 'co', 'co2', 'nh3', 'vocs',
                         'temperature', 'humidity', 'pressure', 'altitude']
         layer_columns = [col for col in layers if col in valid_layers]
@@ -147,21 +141,17 @@ def fetch_data(params):
         all_columns = base_columns + layer_columns
         columns_str = ', '.join(all_columns)
         
-        # Build sensor_type filter
         if len(valid_types) == 1:
             sensor_filter = f"AND sensor_type = '{valid_types[0]}'"
         else:
             types_str = "', '".join(valid_types)
             sensor_filter = f"AND sensor_type IN ('{types_str}')"
         
-        # Calculate bounds
         lat_min = latitude - delta_lat
         lat_max = latitude + delta_lat
         lon_min = longitude - delta_lng
         lon_max = longitude + delta_lng
         
-        # Query: Get all data in bounds, then deduplicate per location in Python
-        # QuestDB doesn't support ROW_NUMBER() OVER, so we fetch and dedupe
         query = f"""
             SELECT {columns_str}
             FROM pollution_data
@@ -179,7 +169,8 @@ def fetch_data(params):
             logging.info("No data found for query")
             raise HTTPException(status_code=404, detail="No data found")
         
-        # Deduplicate: keep only latest reading per location (4 decimal precision)
+        # Deduplicate: one reading per location
+        # Priority: real sensors (SPO-RO, CityAirQ, WearAware) over Forecast
         # 4 decimals = ~11 meters precision
         location_map = {}
         
@@ -197,9 +188,18 @@ def fetch_data(params):
             lon_key = round(result['longitude'], 4)
             location_key = (lat_key, lon_key)
             
-            # Keep only the first (most recent due to ORDER BY DESC)
+            current_type = result['sensor_type']
+            is_forecast = (current_type == 'Forecast')
+            
             if location_key not in location_map:
                 location_map[location_key] = result
+            else:
+                existing_type = location_map[location_key]['sensor_type']
+                existing_is_forecast = (existing_type == 'Forecast')
+                
+                # Replace if: existing is Forecast and current is real sensor
+                if existing_is_forecast and not is_forecast:
+                    location_map[location_key] = result
         
         results = list(location_map.values())
         
