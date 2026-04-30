@@ -28,10 +28,10 @@ GRID_RESOLUTION = float(os.getenv("GRID_RESOLUTION", "0.002"))  # ~220m
 
 # Constants
 BUCHAREST_BOUNDS = {
-    "lat_min": 44.35,
-    "lat_max": 44.55,
-    "lon_min": 25.95,
-    "lon_max": 26.25
+    "lat_min": 44.33,
+    "lat_max": 44.57,
+    "lon_min": 25.93,
+    "lon_max": 26.27
 }
 PREDICT_POLLUTANTS = ["pm10", "pm2_5", "no2", "co"]
 ROMANIA_OFFSET_MS = 3 * 60 * 60 * 1000

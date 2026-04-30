@@ -115,13 +115,13 @@ except Exception as e:
     sys.exit(1)
 PYTHON_SCRIPT
 
-# Optional: Import data from excel (to populate the table with some initial data)
-# EXCEL_FILE="../backend/config/questdb/xlsxs/initial_data.xlsx"
-# if [ -f "$EXCEL_FILE" ]; then
-#     echo ""
-#     echo -n "Importing fixed sensors data..."
-#     python3 ../backend/config/questdb/import_from_excel.py "$EXCEL_FILE" 2>/dev/null && echo " done" || echo " skipped"
-# fi
+# Optional: Import initial data from CSV
+CSV_FILE="../backend/config/questdb/initial_data.csv"
+if [ -f "$CSV_FILE" ]; then
+    echo ""
+    echo -n "Importing initial data..."
+    python3 ../backend/config/questdb/import_csv.py "$CSV_FILE" 2>/dev/null && echo " done" || echo " skipped"
+fi
 
 # Kill port-forward
 kill $PF_PID 2>/dev/null || true
