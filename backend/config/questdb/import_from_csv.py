@@ -17,17 +17,23 @@ def parse_timestamp(ts_str):
     if not ts_str:
         return None
     
+    ts_str = ts_str.strip()
+    
+    # Handle Z suffix (UTC)
+    if ts_str.endswith('Z'):
+        ts_str = ts_str[:-1]
+    
     formats = [
-        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%dT%H:%M:%S.%f',
         '%Y-%m-%dT%H:%M:%S',
         '%Y-%m-%d %H:%M:%S.%f',
-        '%Y-%m-%dT%H:%M:%S.%f',
+        '%Y-%m-%d %H:%M:%S',
         '%Y-%m-%d',
     ]
     
     for fmt in formats:
         try:
-            return datetime.strptime(ts_str.strip(), fmt)
+            return datetime.strptime(ts_str, fmt)
         except ValueError:
             continue
     

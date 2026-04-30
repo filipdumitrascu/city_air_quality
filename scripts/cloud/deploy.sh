@@ -120,7 +120,7 @@ CSV_FILE="../backend/config/questdb/csv/initial_data.csv"
 if [ -f "$CSV_FILE" ]; then
     echo ""
     echo -n "Importing initial data..."
-    python3 ../backend/config/questdb/import_csv.py "$CSV_FILE" 2>/dev/null && echo " done" || echo " skipped"
+    python3 ../backend/config/questdb/import_from_csv.py "$CSV_FILE" 2>/dev/null && echo " done" || echo " skipped"
 fi
 
 # Kill port-forward
