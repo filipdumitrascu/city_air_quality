@@ -225,19 +225,15 @@ async def get_model_status():
 # PREDICT ENDPOINT
 @app.post("/predict/fill-gaps")
 async def predict_fill_gaps(
-    max_neighbor_distance_km: float = 2.0,
-    resolution: float = 0.005  # ~500m for visualization (coarser than routing)
+    max_neighbor_distance_km: float = 1.0,
+    resolution: float = 0.005
 ):
     """
-    Predict pollution at grid points around each existing sensor.
-    
-    Generates a uniform grid in a circle around each sensor station,
-    ensuring complete coverage near all sensors.
-    
-    Args:
-        max_neighbor_distance_km: Radius around each sensor to generate predictions (default 2km)
-        resolution: Grid resolution in degrees (~0.005 = 500m)
+    Predict pollution at grid points around each sensor.
+    Always includes fixed SPO-RO stations plus any mobile sensors with data.
     """
+    import time
+    import math
     start_time = time.time()
     
     if not model_status["loaded"] or model is None:
@@ -246,29 +242,37 @@ async def predict_fill_gaps(
             "gaps_filled": 0
         }
     
-    # Fetch existing sensor data
+    # Fetch existing sensor data (for model input)
     station_state = await fetch_current_sensor_state()
     
-    if len(station_state) < 3:
+    if len(station_state) < 2:
         return {
             "message": f"Not enough stations ({len(station_state)}) for gap fill",
             "gaps_filled": 0
         }
     
-    # Build set of existing sensor coordinates (snapped to grid)
-    existing_coords = set()
-    sensor_locations = []
+    # Build sensor locations for grid generation
+    # Always include fixed stations + any mobile sensors from DB
+    sensor_locations = set()
     
     for station in station_state:
         lat, lon = station["lat"], station["lon"]
-        sensor_locations.append((lat, lon))
+        grid_lat = round(round(lat / resolution) * resolution, 6)
+        grid_lon = round(round(lon / resolution) * resolution, 6)
+        sensor_locations.add((grid_lat, grid_lon))
+    
+    sensor_locations = list(sensor_locations)
+    
+    # Build set of existing sensor coordinates (snapped to grid) - to skip
+    existing_coords = set()
+    for lat, lon in sensor_locations:
         grid_lat = round(lat / resolution) * resolution
         grid_lon = round(lon / resolution) * resolution
         existing_coords.add((round(grid_lat, 6), round(grid_lon, 6)))
     
-    # Generate grid points (uniform coverage)
+    # Generate grid points (uniform coverage around each sensor)
     km_to_deg_lat = 1 / 111.32
-    km_to_deg_lon = 1 / (111.32 * math.cos(math.radians(44.43)))  # Bucharest latitude
+    km_to_deg_lon = 1 / (111.32 * math.cos(math.radians(44.43)))
     
     radius_deg_lat = max_neighbor_distance_km * km_to_deg_lat
     radius_deg_lon = max_neighbor_distance_km * km_to_deg_lon
@@ -279,7 +283,7 @@ async def predict_fill_gaps(
     gap_points_set = set()
     
     for slat, slon in sensor_locations:
-        # Generate grid in square around station, then filter to circle
+        # Generate grid in square around station
         for dlat in range(-steps_lat, steps_lat + 1):
             for dlon in range(-steps_lon, steps_lon + 1):
                 plat = round(slat + dlat * resolution, 6)
@@ -304,8 +308,8 @@ async def predict_fill_gaps(
     
     gap_points = [Point(lat=lat, lon=lon) for lat, lon in gap_points_set]
     
-    logger.info(f"Gap fill: {len(sensor_locations)} sensors, {len(existing_coords)} sensor coords, "
-                f"{len(gap_points)} gap points within {max_neighbor_distance_km}km radius")
+    logger.info(f"Gap fill: {len(sensor_locations)} sensors from DB, "
+                    f"{len(gap_points)} gap points within {max_neighbor_distance_km}km radius")
     
     if not gap_points:
         return {

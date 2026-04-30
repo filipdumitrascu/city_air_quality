@@ -218,7 +218,7 @@ async def trigger_gap_fill() -> int:
             response = await client.post(
                 f"{FORECAST_SERVICE_URL}/predict/fill-gaps",
                 params={
-                    "max_neighbor_distance_km": 2.0,
+                    "max_neighbor_distance_km": 1.0,
                     "resolution": 0.005  # ~500m grid for visualization
                 }
             )
