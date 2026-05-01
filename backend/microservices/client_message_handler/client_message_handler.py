@@ -290,7 +290,7 @@ async def get_results(payload: ResultsPayload):
         cached_result = redis_client.get(cache_key)
         if cached_result:
             logging.info(f"Cache HIT: {cache_key}")
-            return {"data": json.loads(cached_result), "cache hit": True}
+            return {"data": json.loads(cached_result), "cache_hit": True}
         logging.info(f"Cache MISS: {cache_key}")
     except Exception as e:
         logging.warning(f"Redis error: {e}")
@@ -326,7 +326,7 @@ async def get_results(payload: ResultsPayload):
         except Exception as e:
             logging.warning(f"Failed to cache: {e}")
         
-        return {"data": response_data, "cache hit": False}
+        return {"data": response_data, "cache_hit": False}
         
     except HTTPException:
         raise

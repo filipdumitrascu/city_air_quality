@@ -589,7 +589,7 @@ async function queryPollutionData() {
             return;
         }
         
-        displayPollutionData(data.data, lat, lon, radius, data.cached);
+        displayPollutionData(data.data, lat, lon, radius, data.cache_hit);
         
     } catch (error) {
         console.error('Query error:', error);
