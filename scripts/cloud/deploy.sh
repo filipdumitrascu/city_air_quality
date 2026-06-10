@@ -116,7 +116,7 @@ except Exception as e:
 PYTHON_SCRIPT
 
 # Optional: Import initial data from CSV
-CSV_FILE="../backend/config/questdb/csv/initial_data_mobile.csv"
+CSV_FILE="../backend/config/questdb/csv/initial.csv"
 if [ -f "$CSV_FILE" ]; then
     echo ""
     echo -n "Importing initial data..."

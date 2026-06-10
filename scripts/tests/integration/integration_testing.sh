@@ -35,7 +35,7 @@ TIMESTAMP_MS=$(($(date +%s) * 1000))
 INGEST_PAYLOAD="{\"sensor_type\":\"CityAirQ\", \"sensor_id\":\"001\",\"timestamp\":$TIMESTAMP_MS,\"latitude\":44.4268,\"longitude\":26.1025,\"pm10\":45.3,\"pm2_5\":25.2}"
  
 # Try to load API key from file, fallback to env var
-API_KEY_FILE="$(dirname "$0")/../../../deploy/sensor-api-key.txt"
+API_KEY_FILE="$(dirname "$0")/../../../deploy/access-key.txt"
 if [ -f "$API_KEY_FILE" ]; then
     AUTH_TOKEN=$(cat "$API_KEY_FILE" | tr -d '\n')
 elif [ -n "$INGEST_AUTH_TOKEN" ]; then
@@ -50,7 +50,7 @@ if [ -n "$AUTH_TOKEN" ]; then
       -H "Authorization: Bearer $AUTH_TOKEN" \
       -d "$INGEST_PAYLOAD")
     echo "Response: $INGEST_RESPONSE"
-    if echo "$INGEST_RESPONSE" | grep -qE "(success|published)"; then
+    if echo "$INGEST_RESPONSE" | grep -qE "accepted"; then
         echo "PASSED"; PASSED=$((PASSED+1))
     else
         echo "FAILED"; FAILED=$((FAILED+1))
@@ -116,6 +116,36 @@ if [ -n "$ROUTING_IP" ]; then
     fi
 else
     echo "SKIPPED (routing-service not found)"
+fi
+echo ""
+
+# TEST 7: Forecast Service Health
+echo "Test 7: Forecast Service Health"
+kubectl port-forward svc/forecast-service 8002:8000 &>/dev/null &
+PF_PID=$!
+sleep 2
+FORECAST_HEALTH=$(curl -s "http://localhost:8002/health" 2>/dev/null || echo "unreachable")
+kill $PF_PID 2>/dev/null || true
+echo "Response: $FORECAST_HEALTH"
+if echo "$FORECAST_HEALTH" | grep -q "healthy"; then
+    echo "PASSED"; PASSED=$((PASSED+1))
+else
+    echo "FAILED"; FAILED=$((FAILED+1))
+fi
+echo ""
+
+# TEST 8: Forecast Fill-Gaps
+echo "Test 8: Forecast Fill-Gaps"
+kubectl port-forward svc/forecast-service 8002:8000 &>/dev/null &
+PF_PID=$!
+sleep 2
+FILL_GAPS=$(curl -s -X POST "http://localhost:8002/predict/fill-gaps?resolution=0.01&max_neighbor_distance_km=2.0" 2>/dev/null || echo "unreachable")
+kill $PF_PID 2>/dev/null || true
+echo "Response: ${FILL_GAPS:0:150}..."
+if echo "$FILL_GAPS" | grep -qE "(gaps_filled|Filled|predictions)"; then
+    echo "PASSED"; PASSED=$((PASSED+1))
+else
+    echo "FAILED"; FAILED=$((FAILED+1))
 fi
 echo ""
 

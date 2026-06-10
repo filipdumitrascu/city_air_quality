@@ -293,9 +293,20 @@
           "legendFormat": "database-service",
           "range": true,
           "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(process_cpu_seconds_total{job=~\".*forecast-service.*\"}[5m])",
+          "legendFormat": "forecast-service",
+          "range": true,
+          "refId": "D"
         }
       ],
-      "title": "CPU Seconds Total (30m)",
+      "title": "CPU Usage (5m rate)",
       "type": "timeseries"
     },
     {
@@ -404,9 +415,20 @@
           "legendFormat": "database-service",
           "range": true,
           "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(process_cpu_seconds_total{job=~\".*forecast-service.*\"}[1m])",
+          "legendFormat": "forecast-service",
+          "range": true,
+          "refId": "D"
         }
       ],
-      "title": "CPU Seconds Total (1m)",
+      "title": "CPU Usage (1m rate)",
       "type": "timeseries"
     },
     {
@@ -465,7 +487,7 @@
           "refId": "A"
         }
       ],
-      "title": "Used_RAM_Bytes_Mega",
+      "title": "CMH RAM (MB)",
       "type": "stat"
     },
     {
@@ -518,13 +540,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(process_virtual_memory_bytes{job=~\".*client-message-handler.*\"})/1024/1024",
-          "legendFormat": "Virtual Memory",
+          "expr": "sum(process_resident_memory_bytes{job=~\".*forecast-service.*\"})/1024/1024",
+          "legendFormat": "Forecast RAM",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Virtual_Memory_Used_Mega",
+      "title": "Forecast RAM (MB)",
       "type": "stat"
     },
     {
@@ -583,7 +605,7 @@
           "refId": "A"
         }
       ],
-      "title": "Client_Message_Handler_Requests_GET",
+      "title": "Total GET Requests",
       "type": "stat"
     },
     {
@@ -642,7 +664,7 @@
           "refId": "A"
         }
       ],
-      "title": "Client_Message_Handler_Requests_POST",
+      "title": "Total POST Requests",
       "type": "stat"
     },
     {
@@ -762,6 +784,28 @@
           "legendFormat": "data-provider-service",
           "range": true,
           "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "process_resident_memory_bytes{job=~\".*forecast-service.*\"}",
+          "legendFormat": "forecast-service",
+          "range": true,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "process_resident_memory_bytes{job=~\".*ingest-service.*\"}",
+          "legendFormat": "ingest-service",
+          "range": true,
+          "refId": "F"
         }
       ],
       "title": "Memory Usage by Service",

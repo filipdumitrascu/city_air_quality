@@ -43,6 +43,8 @@ class Point(BaseModel):
     lon: float = Field(..., ge=-180, le=180)
 class ModelStatus(BaseModel):
     """Model status information."""
+    model_config = {"protected_namespaces": ()}  # Disable protected namespace warning
+    
     loaded: bool
     model_path: str
     pollutants: List[str]

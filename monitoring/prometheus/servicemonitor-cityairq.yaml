@@ -118,3 +118,23 @@ spec:
   endpoints:
     - port: redis
       interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cityairq-forecast-service
+  namespace: monitoring
+  labels:
+    release: prometheus
+    app: cityairq
+spec:
+  selector:
+    matchLabels:
+      app: forecast-service
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

@@ -49,21 +49,25 @@ const POLLUTANT_CONFIG = {
     nh3:    { thresholds: [25, 50, 100],     weight: 0.5, unit: 'ppm',   label: 'NH3' }
 };
 
-// Normalize pollutant value to 0-100 scale based on thresholds
+// Normalize pollutant value to 0-150+ scale based on thresholds
 function normalizePollutant(value, thresholds) {
     if (value <= thresholds[0]) {
         // Good: 0-50
         return (value / thresholds[0]) * 50;
-    } else if (value <= thresholds[1]) {
+    }
+
+    if (value <= thresholds[1]) {
         // Moderate: 50-100
         return 50 + ((value - thresholds[0]) / (thresholds[1] - thresholds[0])) * 50;
-    } else if (value <= thresholds[2]) {
+    }
+
+    if (value <= thresholds[2]) {
         // Unhealthy: 100-150
         return 100 + ((value - thresholds[1]) / (thresholds[2] - thresholds[1])) * 50;
-    } else {
-        // Very unhealthy: 150+
-        return 150 + ((value - thresholds[2]) / thresholds[2]) * 50;
     }
+
+    // Very unhealthy: 150+
+    return 150 + ((value - thresholds[2]) / thresholds[2]) * 50;
 }
 
 // Calculate combined AQI from all available pollutants
@@ -88,7 +92,10 @@ function calculateAQI(data) {
         }
     }
     
-    if (totalWeight === 0) return 50; // Default neutral
+    if (totalWeight === 0) {
+        return 50; // Default neutral
+    }
+
     return weightedSum / totalWeight;
 }
 

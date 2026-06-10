@@ -315,9 +315,9 @@ async def get_data(
         
         try:
             redis_client.setex(cache_key, 300, json.dumps(results))
-            logging.info(f"Cache SET: {cache_key}")
+            logging.info(f"Cached result: {cache_key} (TTL: 300s)")
         except Exception as e:
-            logging.error(f"Cache SET failed: {e}")
+            logging.warning(f"Failed to cache result: {e}")
         
         return results
     except HTTPException:

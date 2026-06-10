@@ -144,7 +144,7 @@ async def test_results_success(mock_queue, mock_publish, mock_redis):
     
     assert response.status_code == 200
     assert "data" in response.json()
-    assert response.json()["cached"] == False
+    assert response.json()["cache_hit"] == False
     mock_publish.assert_called_once_with("results_service_messages", valid_results_payload)
 
 @pytest.mark.asyncio
@@ -157,7 +157,7 @@ async def test_results_cache_hit(mock_redis):
         response = await ac.post("/results/", json=valid_results_payload)
     
     assert response.status_code == 200
-    assert response.json()["cached"] == True
+    assert response.json()["cache_hit"] == True
     assert "data" in response.json()
 
 @pytest.mark.asyncio

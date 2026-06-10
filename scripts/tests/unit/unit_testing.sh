@@ -10,6 +10,7 @@ pytest ../../../backend/microservices/data_provider_service/unit_test_dt_prvdr_s
 pytest ../../../backend/microservices/database_service/unit_test_dtbs_srvc.py -v
 pytest ../../../backend/microservices/ingest_service/unit_test_ingst_srvc.py -v
 pytest ../../../backend/microservices/routing_service/unit_test_rtng_srvc.py -v
+pytest ../../../backend/microservices/forecast_service/unit_test_frcst_srvc.py -v
 
 # Remove pycache
 rm -r ../../../.pytest_cache
