@@ -2,7 +2,7 @@
 
 Backend infrastructure for air quality monitoring in Bucharest.
 
-![alt text](docs/notebooks/images/block_diagram.png)
+![alt text](docs/block_diagram.png)
 
 ## Contributors
 
