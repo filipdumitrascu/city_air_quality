@@ -1,3 +1,16 @@
+"""
+Client_Message_Handler:
+- publish on 'ingest_service_messages' data that needs to be ingested by the Ingest_Service
+
+- publish on 'results_service_messages' data requests that need be processed by Data_Provider_Service
+if cache miss
+
+- sends HTTP POST requests to the Routing_Service 
+if cache miss
+
+- subscribed to 'results_response_messages-sub' for the data returned by the Data_Provider_Service
+"""
+
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -23,8 +36,10 @@ from common.authentification_service.auth import authorize
 redis_client = redis.Redis(
     host=os.getenv('REDIS_HOST', 'redis-service'),
     port=int(os.getenv('REDIS_PORT', 6379)),
+
     db=int(os.getenv('REDIS_DB', 0)),
     decode_responses=True,
+
     socket_connect_timeout=5,
     socket_timeout=5
 )
@@ -36,7 +51,7 @@ logging.basicConfig(
 )
 
 # Constants
-# Romania timezone offset (GMT+3 during summer, GMT+2 during winter)
+# Romania timezone offset (GMT +3 during summer, GMT +2 during winter)
 ROMANIA_OFFSET_MS = 3 * 60 * 60 * 1000  # 3 hours in milliseconds
 
 
@@ -59,7 +74,7 @@ class IngestPayload(BaseModel):
         ..., description="Sensor type: CityAirQ, WearAware, SPO-RO, or Forecast")
 
     sensor_id: Optional[str] = Field(
-        default=None, description="Sensor identifier (e.g., '001'). None for Forecast.")
+        default=None, description="Sensor identifier (e.g. '001'). None for Forecast.")
 
     timestamp: Optional[int] = Field(
         default=None, description="Unix timestamp in milliseconds. Default: current time.")
@@ -102,6 +117,7 @@ class ResultsPayload(BaseModel):
     """
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
+
     radius: float = Field(..., gt=0, description="Search radius in km")
     sensor_types: Optional[List[str]] = Field(
         default=["CityAirQ", "WearAware"],
@@ -121,6 +137,7 @@ class RoutePayload(BaseModel):
     """
     start: dict = Field(..., description="Start point: {lat, lon}")
     goal: dict = Field(..., description="Goal point: {lat, lon}")
+
     alpha: float = Field(default=1, ge=0, le=1, description="0=shortest, 1=cleanest")
     sensor_types: Optional[List[str]] = Field(
         default=["CityAirQ", "WearAware", "SPO-RO", "Forecast"],
@@ -134,13 +151,14 @@ class RoutePayload(BaseModel):
 def generate_cache_key(payload: dict) -> str:
     """Generate unique cache key from query payload."""
     sensor_types = payload.get('sensor_types', ['CityAirQ', 'WearAware', 'SPO-RO', 'Forecast'])
+
     if sensor_types:
         sensor_types = sorted(sensor_types)
     else:
         sensor_types = ['CityAirQ', 'WearAware', 'SPO-RO', 'Forecast']
-    
+
     layers = payload.get('layers') or []
-    
+
     key_data = json.dumps({
         'latitude': round(payload.get('latitude', 0), 4),
         'longitude': round(payload.get('longitude', 0), 4),
@@ -148,7 +166,7 @@ def generate_cache_key(payload: dict) -> str:
         'layers': sorted(layers) if layers else 'all',
         'sensor_types': sensor_types
     }, sort_keys=True)
-    
+
     hash_hex = hashlib.md5(key_data.encode()).hexdigest()
     return f"client_query:{hash_hex}"
 
@@ -166,8 +184,10 @@ async def process_results_message(message):
     try:
         response_data = json.loads(message.data.decode("utf-8"))
         response_queue.put(response_data)
+
         message.ack()
         logging.info("Received response from Data Provider Service")
+
     except Exception as e:
         logging.error(f"Error processing message: {str(e)}")
         message.nack()
@@ -182,15 +202,16 @@ async def lifespan(app: FastAPI):
     """Application lifespan - start subscriber on startup."""
     asyncio.create_task(results_subscriber.start_subscriber())
     logging.info("PubSub subscriber started for 'results_response_messages-sub'")
-    
+
     try:
         redis_client.ping()
         logging.info(f"Redis connected at {os.getenv('REDIS_HOST', 'redis-service')}:6379")
+
     except Exception as e:
         logging.warning(f"Redis unavailable (caching disabled): {e}")
-    
+
     yield
-    
+
     results_subscriber.stop()
     logging.info("Client Message Handler shutting down")
 
@@ -221,7 +242,7 @@ async def health_check():
         redis_ok = redis_client.ping()
     except:
         pass
-    
+
     return {
         "status": "healthy",
         "service": "client_message_handler",
@@ -266,6 +287,7 @@ async def ingest_data(
         )
     except Exception as e:
         logging.error(f"Ingest error: {str(e)}")
+
         raise HTTPException(
             status_code=400, 
             detail=f"Failed to process ingest request: {str(e)}"
@@ -288,10 +310,13 @@ async def get_results(payload: ResultsPayload):
     # Check cache
     try:
         cached_result = redis_client.get(cache_key)
+
         if cached_result:
             logging.info(f"Cache HIT: {cache_key}")
             return {"data": json.loads(cached_result), "cache_hit": True}
+
         logging.info(f"Cache MISS: {cache_key}")
+
     except Exception as e:
         logging.warning(f"Redis error: {e}")
 
@@ -323,13 +348,15 @@ async def get_results(payload: ResultsPayload):
         try:
             redis_client.setex(cache_key, 180, json.dumps(response_data))
             logging.info(f"Cached result: {cache_key} (TTL: 180s)")
+
         except Exception as e:
             logging.warning(f"Failed to cache: {e}")
         
         return {"data": response_data, "cache_hit": False}
-        
+
     except HTTPException:
         raise
+
     except Exception as e:
         logging.error(f"Results query error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -345,33 +372,35 @@ async def calculate_route(payload: RoutePayload):
     Authentication: Not required
     """
     routing_service_url = os.getenv('ROUTING_SERVICE_URL', 'http://routing-service:8000')
-    
+
     try:
         route_request = payload.model_dump()
         logging.info(f"Route request: {route_request['start']} -> {route_request['goal']}")
-        
+
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{routing_service_url}/route",
                 json=route_request
             )
-        
+
         if response.status_code == 200:
             logging.info("Route calculated successfully")
             return response.json()
-        else:
-            error_detail = response.text
-            logging.error(f"Routing Service error: {error_detail}")
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Routing Service error: {error_detail}"
-            )
-            
+
+        error_detail = response.text
+        logging.error(f"Routing Service error: {error_detail}")
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=f"Routing Service error: {error_detail}"
+        )
+
     except httpx.TimeoutException:
         logging.error("Routing Service timeout")
         raise HTTPException(status_code=504, detail="Routing Service timeout")
+
     except HTTPException:
         raise
+
     except Exception as e:
         logging.error(f"Route calculation error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -383,7 +412,7 @@ async def cache_stats():
     try:
         info = redis_client.info("stats")
         client_keys = len(redis_client.keys("client_query:*"))
-        
+
         return {
             "connected": True,
             "total_commands": info.get("total_commands_processed", 0),
@@ -395,6 +424,7 @@ async def cache_stats():
             ),
             "cached_queries": client_keys
         }
+
     except Exception as e:
         return {"connected": False, "error": str(e)}
 
@@ -402,10 +432,14 @@ async def cache_stats():
 async def clear_cache():
     try:
         keys = redis_client.keys("client_query:*")
+
         if keys:
             redis_client.delete(*keys)
             logging.info(f"Cleared {len(keys)} cached queries")
+
             return {"cleared": len(keys)}
+
         return {"cleared": 0, "message": "No cached queries"}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cache clear error: {str(e)}")

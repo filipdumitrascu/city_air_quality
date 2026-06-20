@@ -46,11 +46,11 @@ class GeoJSONProperties(BaseModel):
     """Route properties with pollution stats for all 8 pollutants"""
     distance_km: float
     duration_minutes: Optional[float] = None
-    
+
     # Combined AQI (always present)
     avg_aqi: float
     max_aqi: float
-    
+
     # Individual pollutants (Optional - only present if data available)
     # Values of -1 mean no data for that pollutant on this route
     avg_pm10: Optional[float] = None
@@ -69,7 +69,7 @@ class GeoJSONProperties(BaseModel):
     max_nh3: Optional[float] = None
     avg_vocs: Optional[float] = None
     max_vocs: Optional[float] = None
-    
+
     # Metadata
     calculation_time_ms: float
     sensor_types_used: List[str]

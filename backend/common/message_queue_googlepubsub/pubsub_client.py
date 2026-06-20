@@ -12,14 +12,16 @@ class PubSubClientSubscriber:
     def __init__(self, subscription_name: str, process_message: Callable):
         self.project_id = PROJECT_ID
         self.subscription_name = subscription_name
+
         self.client = pubsub_v1.SubscriberClient()
         self.process_message = process_message
+
         self.subscription_path = self.client.subscription_path(
             self.project_id, 
             self.subscription_name
         )
+
         self.streaming_pull_future = None
-        
         logging.info(f"Subscriber initialized for {self.subscription_path}")
 
     def sync_callback(self, message) -> None:
@@ -35,10 +37,12 @@ class PubSubClientSubscriber:
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+
             try:
                 loop.run_until_complete(self.process_message(message))
             finally:
                 loop.close()
+
         except Exception as e:
             logging.error(f"Error processing message: {str(e)}")
             message.nack()
@@ -55,14 +59,16 @@ class PubSubClientSubscriber:
             callback=self.sync_callback
         )
         logging.info(f"Listening for messages on {self.subscription_path}...")
-        
+
         loop = asyncio.get_running_loop()
         try:
             # Run the blocking subscriber in executor to not block async loop
             await loop.run_in_executor(None, self.streaming_pull_future.result)
+
         except asyncio.CancelledError:
             logging.info(f"Subscriber {self.subscription_name} cancelled")
             self.streaming_pull_future.cancel()
+
         except Exception as e:
             logging.error(f"Subscriber error: {e}")
             self.streaming_pull_future.cancel()
@@ -83,6 +89,7 @@ class PubSubClientPublisher:
         """Get or create singleton publisher client."""
         if cls._publisher is None:
             cls._publisher = pubsub_v1.PublisherClient()
+
         return cls._publisher
 
     @staticmethod
@@ -108,9 +115,11 @@ class PubSubClientPublisher:
         
         try:
             future = publisher.publish(topic_path, encoded_message)
-            message_id = future.result(timeout=10)  # Wait up to 10s
+            message_id = future.result(timeout=10)
+
             logging.info(f"Published message {message_id} to {topic_name}")
             return message_id
+
         except Exception as e:
             logging.error(f"Failed to publish to {topic_name}: {e}")
             raise

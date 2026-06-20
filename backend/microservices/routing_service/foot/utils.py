@@ -6,16 +6,16 @@ def haversine_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     """Great-circle distance (most accurate)"""
     lat1, lon1 = coord1
     lat2, lon2 = coord2
-    
-    R = 6371
+
+    earth_radius = 6371
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    
+
     a = (math.sin(dlat / 2) ** 2 +
          math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
          math.sin(dlon / 2) ** 2)
-    
-    return R * 2 * math.asin(math.sqrt(a))
+
+    return earth_radius * 2 * math.asin(math.sqrt(a))
 
 def euclidean_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """Straight-line distance (fast, approximate)"""
@@ -31,30 +31,30 @@ def manhattan_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     """Grid-based (taxicab) distance"""
     lat1, lon1 = coord1
     lat2, lon2 = coord2
-    
+
     lat_km = abs(lat2 - lat1) * 111.0
     lon_km = abs(lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
-    
+
     return lat_km + lon_km
 
 def diagonal_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """Chebyshev distance"""
     lat1, lon1 = coord1
     lat2, lon2 = coord2
-    
+
     lat_km = abs(lat2 - lat1) * 111.0
     lon_km = abs(lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
-    
+
     return max(lat_km, lon_km)
 
 def octile_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
     """8-directional movement"""
     lat1, lon1 = coord1
     lat2, lon2 = coord2
-    
+
     lat_km = abs(lat2 - lat1) * 111.0
     lon_km = abs(lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
-    
+
     sqrt2 = math.sqrt(2)
     return max(lat_km, lon_km) + (sqrt2 - 1) * min(lat_km, lon_km)
 
@@ -95,37 +95,37 @@ def calculate_route_stats(
             result[f"avg_{key}"] = -1
             result[f"max_{key}"] = -1
         return result
-    
+
     total_distance = 0.0
     aqi_values = []
-    
+
     # Collect values for each pollutant
     pollutant_values = {key: [] for key in POLLUTANT_KEYS}
-    
+
     for i in range(len(path)):
         if i > 0:
             total_distance += haversine_distance(path[i-1], path[i])
-        
+
         pollution = pollution_data.get(path[i], {})
-        
+
         # Collect AQI
         aqi = pollution.get('aqi', -1)
         if aqi >= 0:
             aqi_values.append(aqi)
-        
+
         # Collect each pollutant
         for key in POLLUTANT_KEYS:
             val = pollution.get(key, -1)
             if val >= 0:
                 pollutant_values[key].append(val)
-    
+
     # Build result dict
     result = {
         "total_distance_km": round(total_distance, 2),
         "avg_aqi": round(sum(aqi_values) / len(aqi_values), 1) if aqi_values else 0.0,
         "max_aqi": round(max(aqi_values), 1) if aqi_values else 0.0
     }
-    
+
     # Add stats for each pollutant (only if we have data)
     for key in POLLUTANT_KEYS:
         values = pollutant_values[key]
@@ -135,5 +135,5 @@ def calculate_route_stats(
         else:
             result[f"avg_{key}"] = -1  # No data
             result[f"max_{key}"] = -1
-    
+
     return result

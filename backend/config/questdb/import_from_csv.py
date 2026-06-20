@@ -40,49 +40,54 @@ def parse_timestamp(ts_str):
     # Try parsing as Unix timestamp (milliseconds)
     try:
         ts_int = int(ts_str)
+
         if ts_int > 1e12:
             ts_int = ts_int / 1000
+
         return datetime.fromtimestamp(ts_int)
+
     except:
         pass
-    
+
     return None
 
 def get_float(row, col, default=-1.0):
     """Get float value from row, return default if missing or invalid."""
     val = row.get(col, '').strip()
+
     if not val or val.lower() in ('', 'nan', 'null', 'none', '-'):
         return default
     try:
         return float(val)
+
     except ValueError:
         return default
 
 def import_csv(filename):
     """Import CSV file to QuestDB pollution_data table."""
-    
+
     print(f"Loading {filename}...")
-    
+
     with open(filename, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         rows = list(reader)
-    
+
     print(f"Loaded {len(rows)} rows")
     print(f"Columns: {list(rows[0].keys()) if rows else 'none'}")
-    
+
     required = ['sensor_type', 'sensor_id', 'timestamp', 'latitude', 'longitude']
     if rows:
         missing = [c for c in required if c not in rows[0]]
         if missing:
             print(f"ERROR: Missing required columns: {missing}")
             sys.exit(1)
-    
+
     print("\nInserting to QuestDB...")
     cur = conn.cursor()
-    
+
     inserted = 0
     errors = 0
-    
+
     for i, row in enumerate(rows):
         try:
             ts = parse_timestamp(row['timestamp'])
@@ -91,7 +96,7 @@ def import_csv(filename):
                 if errors <= 5:
                     print(f"  Error row {i}: Invalid timestamp '{row['timestamp']}'")
                 continue
-            
+
             cur.execute("""
                 INSERT INTO pollution_data 
                 (sensor_type, sensor_id, timestamp, latitude, longitude, altitude,
@@ -121,23 +126,24 @@ def import_csv(filename):
             errors += 1
             if errors <= 5:
                 print(f"  Error row {i}: {e}")
-        
+
         if (i + 1) % 100 == 0:
             conn.commit()
             print(f"  {i+1}/{len(rows)} rows... ({inserted} inserted, {errors} errors)", end='\r')
-    
+
     conn.commit()
-    
+
     cur.execute("SELECT COUNT(*) FROM pollution_data")
     total = cur.fetchone()[0]
     print(f"\n\nInserted {inserted} rows (errors: {errors}). Total in DB: {total}")
-    
+
     cur.execute("SELECT * FROM pollution_data LIMIT 3")
     sample_rows = cur.fetchall()
     print("\nSample from DB:")
+
     for r in sample_rows:
         print(f"  {r}")
-    
+
     cur.close()
 
 if __name__ == "__main__":
@@ -150,6 +156,6 @@ if __name__ == "__main__":
         print("\nExample:")
         print("  python3 import_csv.py initial_data.csv")
         sys.exit(1)
-    
+
     import_csv(sys.argv[1])
     conn.close()

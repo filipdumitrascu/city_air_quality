@@ -42,7 +42,6 @@ def normalize_pollutant(value: float, thresholds: List[float]) -> float:
         # Very unhealthy: 150+
         return 150 + ((value - thresholds[2]) / thresholds[2]) * 50
 
-
 def calculate_aqi(data: Dict[str, float]) -> Optional[float]:
     """
     Calculate AQI from all available pollutants using weighted average.
@@ -54,19 +53,18 @@ def calculate_aqi(data: Dict[str, float]) -> Optional[float]:
     """
     weighted_sum = 0.0
     total_weight = 0.0
-    
+
     for pollutant, config in POLLUTANT_CONFIG.items():
         value = data.get(pollutant)
         if value is not None and value >= 0:
             normalized = normalize_pollutant(value, config['thresholds'])
             weighted_sum += normalized * config['weight']
             total_weight += config['weight']
-    
+
     if total_weight == 0:
         return None
-    
-    return weighted_sum / total_weight
 
+    return weighted_sum / total_weight
 
 def calculate_aqi_legacy(pm10: float, pm2_5: float) -> Optional[float]:
     """Legacy function for backward compatibility."""
@@ -80,16 +78,15 @@ class PollutionGraph:
     Nodes are grid points, edges connect nearby points.
     Edge weight = distance * (1 + alpha * normalized_aqi)
     """
-    
     def __init__(self, alpha: float = 0.5):
         self.config = get_config()
         self.alpha = alpha
         self.grid_resolution = self.config["grid_resolution"]
-        
+
         self.nodes: Set[Tuple[float, float]] = set()
         self.edges: Dict[Tuple[float, float], List[Tuple[Tuple[float, float], float]]] = {}
         self.pollution_data: Dict[Tuple[float, float], Dict[str, float]] = {}
-    
+
     def add_pollution_data(self, readings: List[Dict]):
         """
         Add pollution readings to graph.
@@ -101,16 +98,16 @@ class PollutionGraph:
         Values of -1 are kept but excluded from AQI calculation.
         """
         logger.info(f"Adding {len(readings)} pollution readings")
-        
+
         pollutant_keys = ['pm10', 'pm2_5', 'pm1_0', 'no2', 'co', 'co2', 'nh3', 'vocs']
-        
+
         for reading in readings:
             try:
                 # Handle both dict and list formats
                 if isinstance(reading, dict):
                     lat = float(reading.get("latitude", 0))
                     lon = float(reading.get("longitude", 0))
-                    
+
                     # Extract all pollutants
                     pollutants = {}
                     for key in pollutant_keys:
@@ -130,94 +127,89 @@ class PollutionGraph:
                         'nh3': float(reading[11]) if len(reading) > 11 and reading[11] is not None else -1,
                         'vocs': float(reading[12]) if len(reading) > 12 and reading[12] is not None else -1,
                     }
-                
+
                 # Snap to grid
                 grid_lat = round(lat / self.grid_resolution) * self.grid_resolution
                 grid_lon = round(lon / self.grid_resolution) * self.grid_resolution
                 grid_point = (grid_lat, grid_lon)
-                
+
                 # Calculate AQI using all available pollutants
                 aqi = calculate_aqi(pollutants)
-                
+
                 if aqi is None:
                     aqi = 50.0  # Default neutral value
-                
+
                 # Average if multiple readings at same grid point
                 if grid_point in self.pollution_data:
                     existing = self.pollution_data[grid_point]
-                    
+
                     # Average each pollutant separately
                     merged = {}
                     for key in pollutant_keys:
                         old_val = existing.get(key, -1)
                         new_val = pollutants.get(key, -1)
-                        
+
                         if old_val >= 0 and new_val >= 0:
                             merged[key] = (old_val + new_val) / 2
                         elif new_val >= 0:
                             merged[key] = new_val
                         else:
                             merged[key] = old_val
-                    
+
                     merged['aqi'] = calculate_aqi(merged) or existing.get('aqi', 50)
                     self.pollution_data[grid_point] = merged
                 else:
                     pollutants['aqi'] = aqi
                     self.pollution_data[grid_point] = pollutants
-                
+
                 self.nodes.add(grid_point)
-                
+
             except Exception as e:
                 logger.warning(f"Skipping invalid reading: {e}")
                 continue
-        
+
         logger.info(f"Graph has {len(self.nodes)} nodes")
-    
+
     def build_edges(self):
         """Build edges connecting nearby nodes"""
         logger.info("Building graph edges...")
-        
-        # Get AQI range for normalization
+
+        # Get max values for normalization
         aqi_values = [
             p['aqi'] for p in self.pollution_data.values() 
-            if p.get('aqi') is not None
+            if p.get('aqi') is not None and p.get('aqi') >= 0
         ]
-        
-        if aqi_values:
-            min_aqi = min(aqi_values)
-            max_aqi = max(aqi_values)
-            aqi_range = max_aqi - min_aqi or 1
-        else:
-            min_aqi, aqi_range = 0, 1
-        
-        # Connect each node to k nearest neighbors (handles sparse data)
-        k_neighbors = 8  # Connect to up to 8 nearest nodes
-        max_edge_dist = 2.0  # Maximum 2km edge (prevents connecting across city)
-        
+        aqi_max = max(aqi_values) if aqi_values else 500  # fallback
+
+        k_neighbors = 8
+        max_edge_dist = 2.0  # km - this becomes d_max for normalization
+        d_max = max_edge_dist
+
         for node in self.nodes:
-            # Sort all other nodes by distance
             others_by_dist = sorted(
                 [(other, self._haversine(node, other)) for other in self.nodes if other != node],
                 key=lambda x: x[1]
             )
-            
+
             neighbors = []
             for other, distance in others_by_dist[:k_neighbors]:
                 if distance > max_edge_dist:
-                    break  # Don't connect if too far
-                
-                # Weight based on pollution at destination
+                    break
+
                 other_aqi = self.pollution_data.get(other, {}).get('aqi', 50)
-                normalized_aqi = (other_aqi - min_aqi) / aqi_range
-                
-                weight = distance * (1 + self.alpha * normalized_aqi)
+
+                norm_dist = distance / d_max
+                norm_aqi = other_aqi / aqi_max
+
+                weight = (1 - self.alpha) * norm_dist + self.alpha * norm_aqi
+
                 neighbors.append((other, weight))
-            
+
             self.edges[node] = neighbors
-        
+
         total_edges = sum(len(n) for n in self.edges.values())
         logger.info(f"Built {total_edges} edges")
-    
+
     def get_nearest_node(self, lat: float, lon: float) -> Tuple[float, float]:
         """Find nearest node to given coordinate"""
         if not self.nodes:
@@ -225,29 +217,29 @@ class PollutionGraph:
                 round(lat / self.grid_resolution) * self.grid_resolution,
                 round(lon / self.grid_resolution) * self.grid_resolution
             )
-        
+
         return min(self.nodes, key=lambda n: self._haversine((lat, lon), n))
-    
+
     def get_neighbors(self, node: Tuple[float, float]) -> List[Tuple[Tuple[float, float], float]]:
         """Get neighbors of node: [(neighbor, weight), ...]"""
         return self.edges.get(node, [])
-    
+
     def get_pollution(self, node: Tuple[float, float]) -> Dict[str, float]:
         """Get pollution at node"""
         return self.pollution_data.get(node, {'pm10': -1, 'pm2_5': -1, 'aqi': 50})
-    
+
     @staticmethod
     def _haversine(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
         """Distance in km"""
         lat1, lon1 = coord1
         lat2, lon2 = coord2
-        
+
         R = 6371
         dlat = math.radians(lat2 - lat1)
         dlon = math.radians(lon2 - lon1)
-        
+
         a = (math.sin(dlat / 2) ** 2 +
              math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
              math.sin(dlon / 2) ** 2)
-        
+
         return R * 2 * math.asin(math.sqrt(a))
